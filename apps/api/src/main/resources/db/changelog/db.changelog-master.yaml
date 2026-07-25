@@ -3,3 +3,5 @@ databaseChangeLog:
       file: db/changelog/changes/001-core-schema.yaml
   - include:
       file: db/changelog/changes/002-auth-sessions.yaml
+  - include:
+      file: db/changelog/changes/003-github-id.yaml

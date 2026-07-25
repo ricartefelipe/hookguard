@@ -23,7 +23,7 @@ export default function BillingPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "erro"));
   }, [router]);
 
-  async function checkout() {
+  async function checkout(plan: "pro" | "business") {
     const session = loadSession();
     if (!session) {
       return;
@@ -35,7 +35,8 @@ export default function BillingPage() {
       const result = await startCheckout(
         session.sessionToken,
         `${origin}/app/billing?ok=1`,
-        `${origin}/app/billing?cancel=1`
+        `${origin}/app/billing?cancel=1`,
+        plan
       );
       window.location.href = result.url;
     } catch (err) {
@@ -64,7 +65,7 @@ export default function BillingPage() {
     <AppShell>
       <section className="panel">
         <h1 className="hero-title">Billing</h1>
-        <p className="muted">Uso do mês e upgrade self-serve.</p>
+        <p className="muted">Uso do mês, planos e upgrade self-serve.</p>
         {usage ? (
           <div className="stat-row" style={{ marginTop: "1.25rem" }}>
             <div className="stat">
@@ -73,9 +74,9 @@ export default function BillingPage() {
             </div>
             <div className="stat">
               <strong>
-                {usage.eventCount}/{usage.freeMonthlyEvents}
+                {usage.eventCount}/{usage.includedMonthlyEvents}
               </strong>
-              <span className="muted">Eventos (free cap)</span>
+              <span className="muted">Eventos / incluso</span>
             </div>
             <div className="stat">
               <strong>{usage.stripeConfigured ? "sim" : "não"}</strong>
@@ -86,8 +87,21 @@ export default function BillingPage() {
           <p className="muted">Carregando...</p>
         )}
         <div className="actions">
-          <button className="button" type="button" disabled={loadingAction} onClick={checkout}>
-            Assinar Pro
+          <button
+            className="button"
+            type="button"
+            disabled={loadingAction}
+            onClick={() => checkout("pro")}
+          >
+            Assinar Pro ({usage?.proMonthlyEvents?.toLocaleString("pt-BR") ?? "100k"}/mês)
+          </button>
+          <button
+            className="button"
+            type="button"
+            disabled={loadingAction}
+            onClick={() => checkout("business")}
+          >
+            Assinar Business ({usage?.businessMonthlyEvents?.toLocaleString("pt-BR") ?? "1M"}/mês)
           </button>
           <button
             className="button-secondary"

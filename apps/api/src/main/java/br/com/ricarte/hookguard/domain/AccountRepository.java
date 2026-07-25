@@ -8,4 +8,6 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     Optional<Account> findByEmail(String email);
 
     Optional<Account> findByStripeCustomerId(String stripeCustomerId);
+
+    Optional<Account> findByGithubId(String githubId);
 }

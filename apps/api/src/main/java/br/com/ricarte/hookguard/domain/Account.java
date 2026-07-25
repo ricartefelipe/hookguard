@@ -23,6 +23,9 @@ public class Account {
     @Column(name = "stripe_customer_id", length = 120)
     private String stripeCustomerId;
 
+    @Column(name = "github_id", length = 64)
+    private String githubId;
+
     @Column(nullable = false, length = 40)
     private String plan;
 
@@ -48,8 +51,16 @@ public class Account {
         return email;
     }
 
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
     public String getName() {
         return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public String getStripeCustomerId() {
@@ -58,6 +69,14 @@ public class Account {
 
     public void setStripeCustomerId(String stripeCustomerId) {
         this.stripeCustomerId = stripeCustomerId;
+    }
+
+    public String getGithubId() {
+        return githubId;
+    }
+
+    public void setGithubId(String githubId) {
+        this.githubId = githubId;
     }
 
     public AccountPlan getPlan() {

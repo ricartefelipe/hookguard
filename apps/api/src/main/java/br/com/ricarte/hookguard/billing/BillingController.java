@@ -46,7 +46,10 @@ public class BillingController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("plan", account.getPlan().toStorage());
         body.put("eventCount", usageService.currentUsage(accountId));
+        body.put("includedMonthlyEvents", usageService.includedEvents(account.getPlan()));
         body.put("freeMonthlyEvents", properties.billing().freeMonthlyEvents());
+        body.put("proMonthlyEvents", properties.billing().proMonthlyEvents());
+        body.put("businessMonthlyEvents", properties.billing().businessMonthlyEvents());
         body.put("stripeConfigured", properties.billing().stripeApiKey() != null
                 && !properties.billing().stripeApiKey().isBlank());
         return body;
@@ -55,7 +58,12 @@ public class BillingController {
     @PostMapping("/checkout")
     public Map<String, String> checkout(@Valid @RequestBody CheckoutRequest request) {
         UUID accountId = AccountContext.requireAccountId();
-        return billingService.createCheckoutSession(accountId, request.successUrl(), request.cancelUrl());
+        return billingService.createCheckoutSession(
+                accountId,
+                request.successUrl(),
+                request.cancelUrl(),
+                request.plan()
+        );
     }
 
     @PostMapping("/portal")
@@ -64,7 +72,11 @@ public class BillingController {
         return billingService.createPortalSession(accountId, request.returnUrl());
     }
 
-    public record CheckoutRequest(@NotBlank String successUrl, @NotBlank String cancelUrl) {
+    public record CheckoutRequest(
+            @NotBlank String successUrl,
+            @NotBlank String cancelUrl,
+            String plan
+    ) {
     }
 
     public record PortalRequest(@NotBlank String returnUrl) {

@@ -20,15 +20,18 @@ public class UsageService {
     private final UsageMonthlyRepository usageMonthlyRepository;
     private final AccountRepository accountRepository;
     private final HookguardProperties properties;
+    private final StripeUsageReporter stripeUsageReporter;
 
     public UsageService(
             UsageMonthlyRepository usageMonthlyRepository,
             AccountRepository accountRepository,
-            HookguardProperties properties
+            HookguardProperties properties,
+            StripeUsageReporter stripeUsageReporter
     ) {
         this.usageMonthlyRepository = usageMonthlyRepository;
         this.accountRepository = accountRepository;
         this.properties = properties;
+        this.stripeUsageReporter = stripeUsageReporter;
     }
 
     @Transactional
@@ -39,10 +42,14 @@ public class UsageService {
         long current = usageMonthlyRepository.findByAccountIdAndYearMonth(accountId, yearMonth)
                 .map(UsageMonthly::getEventCount)
                 .orElse(0L);
-        if (account.getPlan() == AccountPlan.FREE && current >= properties.billing().freeMonthlyEvents()) {
+        long included = includedEvents(account.getPlan());
+        if (account.getPlan() == AccountPlan.FREE && current >= included) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "free_quota_exceeded");
         }
         usageMonthlyRepository.increment(accountId, yearMonth);
+        if (account.getPlan() != AccountPlan.FREE && current >= included) {
+            stripeUsageReporter.reportOverageEvent(account);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -51,5 +58,13 @@ public class UsageService {
         return usageMonthlyRepository.findByAccountIdAndYearMonth(accountId, yearMonth)
                 .map(UsageMonthly::getEventCount)
                 .orElse(0L);
+    }
+
+    public long includedEvents(AccountPlan plan) {
+        return switch (plan) {
+            case FREE -> properties.billing().freeMonthlyEvents();
+            case PRO -> properties.billing().proMonthlyEvents();
+            case BUSINESS -> properties.billing().businessMonthlyEvents();
+        };
     }
 }
