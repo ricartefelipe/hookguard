@@ -1,0 +1,123 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-core-schema
+      author: hookguard
+      changes:
+        - createTable:
+            tableName: accounts
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: email, type: varchar(320), constraints: { nullable: false, unique: true } }
+              - column: { name: name, type: varchar(200) }
+              - column: { name: stripe_customer_id, type: varchar(120) }
+              - column: { name: plan, type: varchar(40), constraints: { nullable: false }, defaultValue: free }
+              - column: { name: created_at, type: timestamptz, constraints: { nullable: false } }
+
+        - createTable:
+            tableName: projects
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: account_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: name, type: varchar(200), constraints: { nullable: false } }
+              - column: { name: project_key, type: varchar(80), constraints: { nullable: false, unique: true } }
+              - column: { name: destination_url, type: varchar(2000), constraints: { nullable: false } }
+              - column: { name: timeout_ms, type: int, constraints: { nullable: false }, defaultValueNumeric: 10000 }
+              - column: { name: max_attempts, type: int, constraints: { nullable: false }, defaultValueNumeric: 6 }
+              - column: { name: dedupe_header, type: varchar(120) }
+              - column: { name: signing_secret, type: varchar(120), constraints: { nullable: false } }
+              - column: { name: status, type: varchar(40), constraints: { nullable: false }, defaultValue: active }
+              - column: { name: created_at, type: timestamptz, constraints: { nullable: false } }
+        - addForeignKeyConstraint:
+            baseTableName: projects
+            baseColumnNames: account_id
+            referencedTableName: accounts
+            referencedColumnNames: id
+            constraintName: fk_projects_account
+
+        - createTable:
+            tableName: events
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: project_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: received_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: headers_json, type: text, constraints: { nullable: false } }
+              - column: { name: body, type: bytea, constraints: { nullable: false } }
+              - column: { name: content_type, type: varchar(200) }
+              - column: { name: dedupe_key, type: varchar(500) }
+              - column: { name: status, type: varchar(40), constraints: { nullable: false } }
+        - addForeignKeyConstraint:
+            baseTableName: events
+            baseColumnNames: project_id
+            referencedTableName: projects
+            referencedColumnNames: id
+            constraintName: fk_events_project
+        - createIndex:
+            tableName: events
+            indexName: idx_events_project_received
+            columns:
+              - column: { name: project_id }
+              - column: { name: received_at }
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_events_project_dedupe
+              ON events (project_id, dedupe_key)
+              WHERE dedupe_key IS NOT NULL;
+
+        - createTable:
+            tableName: delivery_attempts
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: event_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: attempt_number, type: int, constraints: { nullable: false } }
+              - column: { name: started_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: finished_at, type: timestamptz }
+              - column: { name: http_status, type: int }
+              - column: { name: error_message, type: varchar(1000) }
+              - column: { name: response_body_snippet, type: varchar(2000) }
+        - addForeignKeyConstraint:
+            baseTableName: delivery_attempts
+            baseColumnNames: event_id
+            referencedTableName: events
+            referencedColumnNames: id
+            constraintName: fk_attempts_event
+
+        - createTable:
+            tableName: delivery_jobs
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: event_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: project_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: available_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: locked_at, type: timestamptz }
+              - column: { name: locked_by, type: varchar(120) }
+              - column: { name: state, type: varchar(40), constraints: { nullable: false } }
+              - column: { name: attempt_number, type: int, constraints: { nullable: false }, defaultValueNumeric: 0 }
+        - addForeignKeyConstraint:
+            baseTableName: delivery_jobs
+            baseColumnNames: event_id
+            referencedTableName: events
+            referencedColumnNames: id
+            constraintName: fk_jobs_event
+        - createIndex:
+            tableName: delivery_jobs
+            indexName: idx_jobs_claim
+            columns:
+              - column: { name: state }
+              - column: { name: available_at }
+
+        - createTable:
+            tableName: usage_monthly
+            columns:
+              - column: { name: account_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: year_month, type: varchar(7), constraints: { nullable: false } }
+              - column: { name: event_count, type: bigint, constraints: { nullable: false }, defaultValueNumeric: 0 }
+        - addPrimaryKey:
+            tableName: usage_monthly
+            columnNames: account_id, year_month
+            constraintName: pk_usage_monthly
+        - addForeignKeyConstraint:
+            baseTableName: usage_monthly
+            baseColumnNames: account_id
+            referencedTableName: accounts
+            referencedColumnNames: id
+            constraintName: fk_usage_account
