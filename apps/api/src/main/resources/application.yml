@@ -39,12 +39,16 @@ hookguard:
     connect-timeout-ms: 3000
     default-timeout-ms: 10000
     max-attempts: 6
+    allow-http: ${HOOKGUARD_DELIVERY_ALLOW_HTTP:false}
   retention:
     days: 14
   billing:
     free-monthly-events: 5000
     stripe-api-key: ${STRIPE_API_KEY:}
     stripe-webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    stripe-pro-price-id: ${STRIPE_PRO_PRICE_ID:}
+  cors:
+    allowed-origins: ${HOOKGUARD_CORS_ORIGINS:http://localhost:3000}
 
 logging:
   level:
