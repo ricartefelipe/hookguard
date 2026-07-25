@@ -22,6 +22,9 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile.prebuilt
+    env_file:
+      - path: .env
+        required: false
     environment:
       HOOKGUARD_DB_URL: jdbc:postgresql://postgres:5432/hookguard
       HOOKGUARD_DB_USER: hookguard
@@ -37,6 +40,11 @@ services:
       HOOKGUARD_SMTP_AUTH: "false"
       HOOKGUARD_SMTP_STARTTLS: "false"
       HOOKGUARD_FROM_EMAIL: noreply@hookguard.local
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRO_PRICE_ID: ${STRIPE_PRO_PRICE_ID:-}
+      STRIPE_BUSINESS_PRICE_ID: ${STRIPE_BUSINESS_PRICE_ID:-}
+      STRIPE_METER_EVENT_NAME: ${STRIPE_METER_EVENT_NAME:-}
     depends_on:
       postgres:
         condition: service_healthy
