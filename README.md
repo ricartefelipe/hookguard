@@ -22,7 +22,7 @@ docs/      — especificação e plano
 ## Desenvolvimento local
 
 ```bash
-docker compose up -d postgres
+docker compose up -d
 cp .env.example .env
 
 cd apps/api && mvn spring-boot:run
@@ -31,11 +31,12 @@ cd apps/web && npm install && npm run dev
 
 - API: `http://localhost:8080`
 - Painel: `http://localhost:3000`
+- Mailpit: `http://localhost:8025`
 - Testes da API: com Postgres no ar, `cd apps/api && mvn test`
 
 Variáveis sensíveis ficam em `.env` (não versionado). Use `.env.example` como referência.
 
-Fluxo rápido no painel: entrar com e-mail → criar projeto (guardar `projectKey`) → apontar o provedor para `/v1/ingest/{projectKey}` → acompanhar eventos e replay.
+Fluxo rápido no painel: pedir magic link → abrir o e-mail no Mailpit (ou o link de dev) → criar projeto (guardar `projectKey`) → apontar o provedor para `/v1/ingest/{projectKey}` → acompanhar eventos e replay.
 
 ## Gitflow
 

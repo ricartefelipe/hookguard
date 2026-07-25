@@ -1,12 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+import type { AccountSession } from "@/lib/session";
 
-export type AccountSession = {
-  accountId: string;
-  email: string;
-  plan: string;
-  usage: number;
-  freeMonthlyEvents: number;
-};
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 export type ProjectSummary = {
   id: string;
@@ -53,10 +47,10 @@ export type UsageInfo = {
   stripeConfigured: boolean;
 };
 
-function authHeaders(accountId: string): HeadersInit {
+function authHeaders(sessionToken: string): HeadersInit {
   return {
     "Content-Type": "application/json",
-    "X-Account-Id": accountId,
+    Authorization: `Bearer ${sessionToken}`,
   };
 }
 
@@ -70,45 +64,75 @@ async function parse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-export async function bootstrapAccount(email: string, name: string): Promise<AccountSession> {
-  const response = await fetch(`${API_BASE}/v1/bootstrap/account`, {
+export async function requestMagicLink(
+  email: string,
+  name: string
+): Promise<{ sent: boolean; email: string; magicLink?: string }> {
+  const response = await fetch(`${API_BASE}/v1/auth/magic-link`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, name }),
   });
+  return parse(response);
+}
+
+export async function verifyMagicLink(token: string): Promise<AccountSession> {
+  const response = await fetch(`${API_BASE}/v1/auth/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
   return parse<AccountSession>(response);
 }
 
-export async function listProjects(accountId: string): Promise<ProjectSummary[]> {
+export async function logout(sessionToken: string): Promise<void> {
+  await fetch(`${API_BASE}/v1/auth/logout`, {
+    method: "POST",
+    headers: authHeaders(sessionToken),
+  });
+}
+
+export async function listProjects(sessionToken: string): Promise<ProjectSummary[]> {
   const response = await fetch(`${API_BASE}/v1/projects`, {
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     cache: "no-store",
   });
   return parse<ProjectSummary[]>(response);
 }
 
 export async function createProject(
-  accountId: string,
+  sessionToken: string,
   input: { name: string; destinationUrl: string; dedupeHeader?: string }
 ): Promise<ProjectSummary> {
   const response = await fetch(`${API_BASE}/v1/projects`, {
     method: "POST",
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     body: JSON.stringify(input),
   });
   return parse<ProjectSummary>(response);
 }
 
-export async function getProject(accountId: string, projectId: string): Promise<ProjectSummary> {
+export async function getProject(sessionToken: string, projectId: string): Promise<ProjectSummary> {
   const response = await fetch(`${API_BASE}/v1/projects/${projectId}`, {
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     cache: "no-store",
   });
   return parse<ProjectSummary>(response);
 }
 
+export async function rotateProjectKey(
+  sessionToken: string,
+  projectId: string
+): Promise<ProjectSummary> {
+  const response = await fetch(`${API_BASE}/v1/projects/${projectId}/rotate-key`, {
+    method: "POST",
+    headers: authHeaders(sessionToken),
+  });
+  return parse<ProjectSummary>(response);
+}
+
 export async function listEvents(
-  accountId: string,
+  sessionToken: string,
   projectId: string,
   status?: string
 ): Promise<EventSummary[]> {
@@ -117,53 +141,56 @@ export async function listEvents(
     params.set("status", status);
   }
   const response = await fetch(`${API_BASE}/v1/events?${params.toString()}`, {
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     cache: "no-store",
   });
   return parse<EventSummary[]>(response);
 }
 
-export async function getEvent(accountId: string, eventId: string): Promise<EventDetail> {
+export async function getEvent(sessionToken: string, eventId: string): Promise<EventDetail> {
   const response = await fetch(`${API_BASE}/v1/events/${eventId}`, {
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     cache: "no-store",
   });
   return parse<EventDetail>(response);
 }
 
-export async function replayEvent(accountId: string, eventId: string): Promise<{ jobId: string }> {
+export async function replayEvent(
+  sessionToken: string,
+  eventId: string
+): Promise<{ jobId: string }> {
   const response = await fetch(`${API_BASE}/v1/events/${eventId}/replay`, {
     method: "POST",
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
   });
   return parse<{ jobId: string }>(response);
 }
 
-export async function getUsage(accountId: string): Promise<UsageInfo> {
+export async function getUsage(sessionToken: string): Promise<UsageInfo> {
   const response = await fetch(`${API_BASE}/v1/billing/usage`, {
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     cache: "no-store",
   });
   return parse<UsageInfo>(response);
 }
 
 export async function startCheckout(
-  accountId: string,
+  sessionToken: string,
   successUrl: string,
   cancelUrl: string
 ): Promise<{ url: string }> {
   const response = await fetch(`${API_BASE}/v1/billing/checkout`, {
     method: "POST",
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     body: JSON.stringify({ successUrl, cancelUrl }),
   });
   return parse<{ url: string }>(response);
 }
 
-export async function openPortal(accountId: string, returnUrl: string): Promise<{ url: string }> {
+export async function openPortal(sessionToken: string, returnUrl: string): Promise<{ url: string }> {
   const response = await fetch(`${API_BASE}/v1/billing/portal`, {
     method: "POST",
-    headers: authHeaders(accountId),
+    headers: authHeaders(sessionToken),
     body: JSON.stringify({ returnUrl }),
   });
   return parse<{ url: string }>(response);

@@ -18,7 +18,7 @@ export default function BillingPage() {
       router.replace("/");
       return;
     }
-    getUsage(session.accountId)
+    getUsage(session.sessionToken)
       .then(setUsage)
       .catch((err) => setError(err instanceof Error ? err.message : "erro"));
   }, [router]);
@@ -33,7 +33,7 @@ export default function BillingPage() {
     try {
       const origin = window.location.origin;
       const result = await startCheckout(
-        session.accountId,
+        session.sessionToken,
         `${origin}/app/billing?ok=1`,
         `${origin}/app/billing?cancel=1`
       );
@@ -52,7 +52,7 @@ export default function BillingPage() {
     setLoadingAction(true);
     setError(null);
     try {
-      const result = await openPortal(session.accountId, `${window.location.origin}/app/billing`);
+      const result = await openPortal(session.sessionToken, `${window.location.origin}/app/billing`);
       window.location.href = result.url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "stripe_error");

@@ -7,7 +7,8 @@ public record HookguardProperties(
         Worker worker,
         Delivery delivery,
         Retention retention,
-        Billing billing
+        Billing billing,
+        Auth auth
 ) {
     public record Worker(boolean enabled, long pollIntervalMs, int batchSize, int lockTimeoutSeconds) {
     }
@@ -23,6 +24,15 @@ public record HookguardProperties(
             String stripeApiKey,
             String stripeWebhookSecret,
             String stripeProPriceId
+    ) {
+    }
+
+    public record Auth(
+            String appBaseUrl,
+            String fromEmail,
+            int magicLinkTtlMinutes,
+            int sessionTtlDays,
+            boolean exposeMagicLink
     ) {
     }
 }
