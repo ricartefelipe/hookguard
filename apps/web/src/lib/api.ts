@@ -43,7 +43,10 @@ export type EventDetail = EventSummary & {
 export type UsageInfo = {
   plan: string;
   eventCount: number;
+  includedMonthlyEvents: number;
   freeMonthlyEvents: number;
+  proMonthlyEvents: number;
+  businessMonthlyEvents: number;
   stripeConfigured: boolean;
 };
 
@@ -112,6 +115,33 @@ export async function createProject(
   return parse<ProjectSummary>(response);
 }
 
+export async function updateProject(
+  sessionToken: string,
+  projectId: string,
+  input: {
+    destinationUrl?: string;
+    timeoutMs?: number;
+    maxAttempts?: number;
+    dedupeHeader?: string;
+  }
+): Promise<ProjectSummary> {
+  const response = await fetch(`${API_BASE}/v1/projects/${projectId}`, {
+    method: "PUT",
+    headers: authHeaders(sessionToken),
+    body: JSON.stringify(input),
+  });
+  return parse<ProjectSummary>(response);
+}
+
+export async function getProviders(): Promise<{ magicLink: boolean; github: boolean }> {
+  const response = await fetch(`${API_BASE}/v1/auth/providers`, { cache: "no-store" });
+  return parse(response);
+}
+
+export function githubLoginUrl(): string {
+  return `${API_BASE}/v1/auth/github`;
+}
+
 export async function getProject(sessionToken: string, projectId: string): Promise<ProjectSummary> {
   const response = await fetch(`${API_BASE}/v1/projects/${projectId}`, {
     headers: authHeaders(sessionToken),
@@ -177,12 +207,13 @@ export async function getUsage(sessionToken: string): Promise<UsageInfo> {
 export async function startCheckout(
   sessionToken: string,
   successUrl: string,
-  cancelUrl: string
+  cancelUrl: string,
+  plan: "pro" | "business" = "pro"
 ): Promise<{ url: string }> {
   const response = await fetch(`${API_BASE}/v1/billing/checkout`, {
     method: "POST",
     headers: authHeaders(sessionToken),
-    body: JSON.stringify({ successUrl, cancelUrl }),
+    body: JSON.stringify({ successUrl, cancelUrl, plan }),
   });
   return parse<{ url: string }>(response);
 }

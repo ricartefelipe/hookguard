@@ -16,18 +16,27 @@ hookguard:
     lock-timeout-seconds: 30
   delivery:
     allow-http: true
+  rate-limit:
+    ingest-per-minute: 1000
   billing:
     free-monthly-events: 5
+    pro-monthly-events: 100
+    business-monthly-events: 1000
     stripe-api-key: ""
     stripe-webhook-secret: ""
     stripe-pro-price-id: ""
+    stripe-business-price-id: ""
+    stripe-meter-event-name: ""
   cors:
     allowed-origins: http://localhost:3000
   auth:
     app-base-url: http://localhost:3000
+    api-base-url: http://localhost:8080
     from-email: test@hookguard.local
     magic-link-ttl-minutes: 20
     session-ttl-days: 30
     expose-magic-link: true
+    github-client-id: ""
+    github-client-secret: ""
   retention:
     days: 14

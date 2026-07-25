@@ -2,6 +2,7 @@ package br.com.ricarte.hookguard.billing;
 
 import br.com.ricarte.hookguard.config.HookguardProperties;
 import br.com.ricarte.hookguard.domain.Account;
+import br.com.ricarte.hookguard.domain.AccountPlan;
 import br.com.ricarte.hookguard.domain.AccountRepository;
 import br.com.ricarte.hookguard.web.ApiException;
 import com.stripe.Stripe;
@@ -11,6 +12,7 @@ import com.stripe.model.billingportal.Session;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -29,16 +31,22 @@ public class BillingService {
     }
 
     @Transactional
-    public Map<String, String> createCheckoutSession(UUID accountId, String successUrl, String cancelUrl) {
+    public Map<String, String> createCheckoutSession(
+            UUID accountId,
+            String successUrl,
+            String cancelUrl,
+            String plan
+    ) {
         ensureStripeConfigured();
         Account account = load(accountId);
+        AccountPlan target = parsePlan(plan);
+        String priceId = priceFor(target);
+        if (priceId == null || priceId.isBlank()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "stripe_price_not_configured");
+        }
         try {
             Stripe.apiKey = properties.billing().stripeApiKey();
             String customerId = ensureCustomer(account);
-            String priceId = properties.billing().stripeProPriceId();
-            if (priceId == null || priceId.isBlank()) {
-                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "stripe_price_not_configured");
-            }
             SessionCreateParams params = SessionCreateParams.builder()
                     .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
                     .setCustomer(customerId)
@@ -49,6 +57,7 @@ public class BillingService {
                             .setPrice(priceId)
                             .build())
                     .putMetadata("accountId", accountId.toString())
+                    .putMetadata("plan", target.toStorage())
                     .build();
             com.stripe.model.checkout.Session session = com.stripe.model.checkout.Session.create(params);
             Map<String, String> body = new HashMap<>();
@@ -81,6 +90,26 @@ public class BillingService {
         } catch (StripeException ex) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "stripe_error");
         }
+    }
+
+    private AccountPlan parsePlan(String plan) {
+        if (plan == null || plan.isBlank()) {
+            return AccountPlan.PRO;
+        }
+        String normalized = plan.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "pro" -> AccountPlan.PRO;
+            case "business" -> AccountPlan.BUSINESS;
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "invalid_plan");
+        };
+    }
+
+    private String priceFor(AccountPlan plan) {
+        return switch (plan) {
+            case PRO -> properties.billing().stripeProPriceId();
+            case BUSINESS -> properties.billing().stripeBusinessPriceId();
+            case FREE -> null;
+        };
     }
 
     private Account load(UUID accountId) {
