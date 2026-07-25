@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { clearSession, loadSession } from "@/lib/session";
+import { logout } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -15,7 +16,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     setEmail(session?.email ?? null);
   }, []);
 
-  function logout() {
+  async function onLogout() {
+    const session = loadSession();
+    if (session?.sessionToken) {
+      try {
+        await logout(session.sessionToken);
+      } catch {
+      }
+    }
     clearSession();
     router.push("/");
   }
@@ -30,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/app">Projetos</Link>
           <Link href="/app/billing">Billing</Link>
           {email ? (
-            <button type="button" className="button-secondary" onClick={logout}>
+            <button type="button" className="button-secondary" onClick={onLogout}>
               Sair ({email})
             </button>
           ) : null}

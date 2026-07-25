@@ -4,6 +4,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+  mail:
+    host: localhost
+    port: 1025
 
 hookguard:
   worker:
@@ -20,3 +23,11 @@ hookguard:
     stripe-pro-price-id: ""
   cors:
     allowed-origins: http://localhost:3000
+  auth:
+    app-base-url: http://localhost:3000
+    from-email: test@hookguard.local
+    magic-link-ttl-minutes: 20
+    session-ttl-days: 30
+    expose-magic-link: true
+  retention:
+    days: 14

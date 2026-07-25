@@ -15,6 +15,15 @@ spring:
           time_zone: UTC
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
+  mail:
+    host: ${HOOKGUARD_SMTP_HOST:localhost}
+    port: ${HOOKGUARD_SMTP_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
 
 server:
   port: ${HOOKGUARD_PORT:8080}
@@ -49,6 +58,12 @@ hookguard:
     stripe-pro-price-id: ${STRIPE_PRO_PRICE_ID:}
   cors:
     allowed-origins: ${HOOKGUARD_CORS_ORIGINS:http://localhost:3000}
+  auth:
+    app-base-url: ${HOOKGUARD_APP_BASE_URL:http://localhost:3000}
+    from-email: ${HOOKGUARD_FROM_EMAIL:noreply@hookguard.local}
+    magic-link-ttl-minutes: 20
+    session-ttl-days: 30
+    expose-magic-link: ${HOOKGUARD_EXPOSE_MAGIC_LINK:false}
 
 logging:
   level:

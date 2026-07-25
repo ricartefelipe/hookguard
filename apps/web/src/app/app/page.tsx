@@ -17,8 +17,8 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function refresh(accountId: string) {
-    const data = await listProjects(accountId);
+  async function refresh(sessionToken: string) {
+    const data = await listProjects(sessionToken);
     setProjects(data);
   }
 
@@ -28,7 +28,7 @@ export default function ProjectsPage() {
       router.replace("/");
       return;
     }
-    refresh(session.accountId)
+    refresh(session.sessionToken)
       .catch((err) => setError(err instanceof Error ? err.message : "erro"))
       .finally(() => setLoading(false));
   }, [router]);
@@ -42,7 +42,7 @@ export default function ProjectsPage() {
     }
     setError(null);
     try {
-      const project = await createProject(session.accountId, {
+      const project = await createProject(session.sessionToken, {
         name: name.trim(),
         destinationUrl: destinationUrl.trim(),
         dedupeHeader: dedupeHeader.trim() || undefined,
@@ -50,7 +50,7 @@ export default function ProjectsPage() {
       setCreatedKey(project.projectKey ?? null);
       setName("");
       setDestinationUrl("");
-      await refresh(session.accountId);
+      await refresh(session.sessionToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : "erro_ao_criar");
     }

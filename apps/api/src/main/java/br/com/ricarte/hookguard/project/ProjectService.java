@@ -115,6 +115,13 @@ public class ProjectService {
         return projectRepository.save(project);
     }
 
+    @Transactional
+    public Project rotateProjectKey(UUID accountId, UUID projectId) {
+        Project project = getOwned(accountId, projectId);
+        project.setProjectKey(randomToken(24));
+        return projectRepository.save(project);
+    }
+
     private String randomToken(int bytes) {
         byte[] buffer = new byte[bytes];
         secureRandom.nextBytes(buffer);

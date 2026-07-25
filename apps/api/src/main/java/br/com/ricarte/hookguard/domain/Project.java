@@ -89,6 +89,10 @@ public class Project {
         return projectKey;
     }
 
+    public void setProjectKey(String projectKey) {
+        this.projectKey = projectKey;
+    }
+
     public String getDestinationUrl() {
         return destinationUrl;
     }
