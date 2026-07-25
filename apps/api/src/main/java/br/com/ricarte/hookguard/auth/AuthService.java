@@ -56,6 +56,10 @@ public class AuthService {
 
     @Transactional
     public Map<String, Object> requestMagicLink(String email, String name) {
+        return requestMagicLink(email, name, null);
+    }
+
+    public Map<String, Object> requestMagicLink(String email, String name, String appBaseUrlOverride) {
         Account account = projectService.ensureAccount(email, name == null || name.isBlank() ? email : name);
         String rawToken = randomToken(32);
         Instant now = Instant.now();
@@ -68,8 +72,10 @@ public class AuthService {
         );
         loginTokenRepository.save(loginToken);
 
-        String link = properties.auth().appBaseUrl().replaceAll("/$", "")
-                + "/auth/callback?token=" + rawToken;
+        String base = appBaseUrlOverride == null || appBaseUrlOverride.isBlank()
+                ? properties.auth().appBaseUrl()
+                : appBaseUrlOverride;
+        String link = base.replaceAll("/$", "") + "/auth/callback?token=" + rawToken;
         sendMail(account.getEmail(), link);
 
         Map<String, Object> body = new LinkedHashMap<>();

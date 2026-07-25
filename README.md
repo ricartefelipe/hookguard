@@ -38,6 +38,14 @@ cd apps/web && npm install && npm run dev
 - Mailpit: `http://localhost:8025`
 - Testes: `cd apps/api && mvn test`
 
+## Demo gratuita (sem VPS/domínio)
+
+```bash
+./scripts/free-demo.sh
+```
+
+Painel em `http://localhost:9080` + URL HTTPS pública via túnel Cloudflare. Detalhes: [`docs/FREE.md`](docs/FREE.md).
+
 ## Produção
 
 ```bash

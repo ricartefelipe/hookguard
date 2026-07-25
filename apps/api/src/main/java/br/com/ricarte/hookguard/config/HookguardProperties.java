@@ -39,6 +39,7 @@ public record HookguardProperties(
             int magicLinkTtlMinutes,
             int sessionTtlDays,
             boolean exposeMagicLink,
+            boolean trustForwardedHost,
             String githubClientId,
             String githubClientSecret
     ) {

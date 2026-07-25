@@ -74,6 +74,7 @@ hookguard:
     magic-link-ttl-minutes: 20
     session-ttl-days: 30
     expose-magic-link: ${HOOKGUARD_EXPOSE_MAGIC_LINK:false}
+    trust-forwarded-host: ${HOOKGUARD_TRUST_FORWARDED_HOST:false}
     github-client-id: ${GITHUB_CLIENT_ID:}
     github-client-secret: ${GITHUB_CLIENT_SECRET:}
 
