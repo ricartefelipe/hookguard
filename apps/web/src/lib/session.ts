@@ -1,4 +1,11 @@
-import type { AccountSession } from "@/lib/api";
+export type AccountSession = {
+  accountId: string;
+  email: string;
+  plan: string;
+  usage: number;
+  freeMonthlyEvents: number;
+  sessionToken: string;
+};
 
 const KEY = "hookguard.session";
 
@@ -11,7 +18,12 @@ export function loadSession(): AccountSession | null {
     return null;
   }
   try {
-    return JSON.parse(raw) as AccountSession;
+    const parsed = JSON.parse(raw) as AccountSession;
+    if (!parsed.sessionToken) {
+      window.localStorage.removeItem(KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }

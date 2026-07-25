@@ -8,6 +8,7 @@ import {
   getProject,
   listEvents,
   replayEvent,
+  rotateProjectKey,
   type EventDetail,
   type EventSummary,
   type ProjectSummary,
@@ -22,13 +23,14 @@ export default function ProjectDetailPage() {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [selected, setSelected] = useState<EventDetail | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const [rotatedKey, setRotatedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
-  async function loadAll(accountId: string) {
+  async function loadAll(sessionToken: string) {
     const [projectData, eventData] = await Promise.all([
-      getProject(accountId, projectId),
-      listEvents(accountId, projectId, statusFilter || undefined),
+      getProject(sessionToken, projectId),
+      listEvents(sessionToken, projectId, statusFilter || undefined),
     ]);
     setProject(projectData);
     setEvents(eventData);
@@ -40,7 +42,7 @@ export default function ProjectDetailPage() {
       router.replace("/");
       return;
     }
-    loadAll(session.accountId).catch((err) =>
+    loadAll(session.sessionToken).catch((err) =>
       setError(err instanceof Error ? err.message : "erro")
     );
   }, [projectId, router, statusFilter]);
@@ -51,7 +53,7 @@ export default function ProjectDetailPage() {
       return;
     }
     try {
-      const detail = await getEvent(session.accountId, eventId);
+      const detail = await getEvent(session.sessionToken, eventId);
       setSelected(detail);
     } catch (err) {
       setError(err instanceof Error ? err.message : "erro");
@@ -64,11 +66,25 @@ export default function ProjectDetailPage() {
       return;
     }
     try {
-      await replayEvent(session.accountId, eventId);
-      await loadAll(session.accountId);
+      await replayEvent(session.sessionToken, eventId);
+      await loadAll(session.sessionToken);
       await openEvent(eventId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "erro_replay");
+    }
+  }
+
+  async function onRotate() {
+    const session = loadSession();
+    if (!session) {
+      return;
+    }
+    try {
+      const updated = await rotateProjectKey(session.sessionToken, projectId);
+      setRotatedKey(updated.projectKey ?? null);
+      setProject(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "erro_rotate");
     }
   }
 
@@ -82,8 +98,19 @@ export default function ProjectDetailPage() {
             <div className="muted mono">
               Ingest: {apiBase}/v1/ingest/&lt;projectKey&gt;
             </div>
-            <div className="muted">
-              A projectKey só é exibida na criação. Use o valor salvo ou recrie o projeto.
+            {rotatedKey ? (
+              <div className="mono">
+                Nova projectKey: <strong>{rotatedKey}</strong>
+              </div>
+            ) : (
+              <div className="muted">
+                A projectKey só aparece na criação ou ao rotacionar.
+              </div>
+            )}
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button className="button-secondary" type="button" onClick={onRotate}>
+                Rotacionar projectKey
+              </button>
             </div>
           </div>
         ) : (

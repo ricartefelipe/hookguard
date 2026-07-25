@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-auth-sessions
+      author: hookguard
+      changes:
+        - createTable:
+            tableName: login_tokens
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: account_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: token_hash, type: varchar(128), constraints: { nullable: false, unique: true } }
+              - column: { name: expires_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: consumed_at, type: timestamptz }
+              - column: { name: created_at, type: timestamptz, constraints: { nullable: false } }
+        - addForeignKeyConstraint:
+            baseTableName: login_tokens
+            baseColumnNames: account_id
+            referencedTableName: accounts
+            referencedColumnNames: id
+            constraintName: fk_login_tokens_account
+
+        - createTable:
+            tableName: sessions
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: account_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: token_hash, type: varchar(128), constraints: { nullable: false, unique: true } }
+              - column: { name: expires_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: revoked_at, type: timestamptz }
+              - column: { name: created_at, type: timestamptz, constraints: { nullable: false } }
+        - addForeignKeyConstraint:
+            baseTableName: sessions
+            baseColumnNames: account_id
+            referencedTableName: accounts
+            referencedColumnNames: id
+            constraintName: fk_sessions_account
+        - createIndex:
+            tableName: sessions
+            indexName: idx_sessions_account
+            columns:
+              - column: { name: account_id }

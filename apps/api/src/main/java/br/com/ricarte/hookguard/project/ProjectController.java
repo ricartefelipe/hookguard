@@ -71,6 +71,13 @@ public class ProjectController {
         return toResponse(project, false);
     }
 
+    @PostMapping("/{projectId}/rotate-key")
+    public Map<String, Object> rotateKey(@PathVariable UUID projectId) {
+        UUID accountId = AccountContext.requireAccountId();
+        Project project = projectService.rotateProjectKey(accountId, projectId);
+        return toResponse(project, true);
+    }
+
     private Map<String, Object> toResponse(Project project, boolean includeSecrets) {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("id", project.getId().toString());
