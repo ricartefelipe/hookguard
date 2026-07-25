@@ -72,7 +72,11 @@ Configure no ambiente:
 - `STRIPE_PRO_PRICE_ID` / `STRIPE_BUSINESS_PRICE_ID`
 - `STRIPE_METER_EVENT_NAME` (opcional, para overage)
 
-## 7. Deploy produção
+## 7. Demo gratuita
+
+Sem VPS, domínio, Stripe ou SMTP: veja [`FREE.md`](FREE.md) e rode `./scripts/free-demo.sh`.
+
+## 8. Deploy produção
 
 ```bash
 cp .env.example .env

@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { verifyMagicLink } from "@/lib/api";
+import { resolveApiBase, verifyMagicLink } from "@/lib/api";
 import { saveSession, type AccountSession } from "@/lib/session";
 
 function CallbackInner() {
@@ -24,7 +24,7 @@ function CallbackInner() {
         sessionToken,
       };
       saveSession(session);
-      fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080"}/v1/auth/me`, {
+      fetch(`${resolveApiBase()}/v1/auth/me`, {
         headers: { Authorization: `Bearer ${sessionToken}` },
       })
         .then(async (response) => {

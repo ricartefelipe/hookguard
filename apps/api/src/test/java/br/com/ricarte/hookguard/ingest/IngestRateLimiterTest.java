@@ -24,6 +24,7 @@ class IngestRateLimiterTest {
                         20,
                         30,
                         true,
+                        false,
                         "",
                         ""
                 ),

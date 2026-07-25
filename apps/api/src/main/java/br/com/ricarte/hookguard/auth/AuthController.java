@@ -2,6 +2,7 @@ package br.com.ricarte.hookguard.auth;
 
 import br.com.ricarte.hookguard.config.HookguardProperties;
 import br.com.ricarte.hookguard.web.AccountContext;
+import br.com.ricarte.hookguard.web.PublicBaseUrl;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -37,8 +38,15 @@ public class AuthController {
     }
 
     @PostMapping("/magic-link")
-    public Map<String, Object> magicLink(@Valid @RequestBody MagicLinkRequest request) {
-        return authService.requestMagicLink(request.email(), request.name());
+    public Map<String, Object> magicLink(
+            @Valid @RequestBody MagicLinkRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return authService.requestMagicLink(
+                request.email(),
+                request.name(),
+                PublicBaseUrl.resolve(httpRequest, properties)
+        );
     }
 
     @PostMapping("/verify")
@@ -60,9 +68,10 @@ public class AuthController {
     public void githubCallback(
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String error,
+            HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
-        String appBase = properties.auth().appBaseUrl().replaceAll("/$", "");
+        String appBase = PublicBaseUrl.resolve(request, properties);
         if (error != null && !error.isBlank()) {
             response.sendRedirect(appBase + "/?error=" + enc(error));
             return;
