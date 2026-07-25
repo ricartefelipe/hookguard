@@ -18,6 +18,11 @@ public record HookguardProperties(
     public record Retention(int days) {
     }
 
-    public record Billing(long freeMonthlyEvents, String stripeApiKey, String stripeWebhookSecret) {
+    public record Billing(
+            long freeMonthlyEvents,
+            String stripeApiKey,
+            String stripeWebhookSecret,
+            String stripeProPriceId
+    ) {
     }
 }

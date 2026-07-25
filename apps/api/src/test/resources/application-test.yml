@@ -17,3 +17,6 @@ hookguard:
     free-monthly-events: 5
     stripe-api-key: ""
     stripe-webhook-secret: ""
+    stripe-pro-price-id: ""
+  cors:
+    allowed-origins: http://localhost:3000
