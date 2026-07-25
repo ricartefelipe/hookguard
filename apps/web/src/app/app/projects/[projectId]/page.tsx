@@ -8,6 +8,7 @@ import {
   getProject,
   listEvents,
   replayEvent,
+  resolveApiBase,
   rotateProjectKey,
   updateProject,
   type EventDetail,
@@ -31,7 +32,7 @@ export default function ProjectDetailPage() {
   const [dedupeHeader, setDedupeHeader] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+  const apiBase = resolveApiBase();
 
   async function loadAll(sessionToken: string) {
     const [projectData, eventData] = await Promise.all([

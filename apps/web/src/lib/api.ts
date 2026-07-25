@@ -1,6 +1,18 @@
 import type { AccountSession } from "@/lib/session";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+export function resolveApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (configured === "same-origin" || configured === "") {
+    if (typeof window !== "undefined") {
+      return window.location.origin;
+    }
+    return "";
+  }
+  if (configured == null) {
+    return "http://localhost:8080";
+  }
+  return configured.replace(/\/$/, "");
+}
 
 export type ProjectSummary = {
   id: string;
@@ -71,7 +83,7 @@ export async function requestMagicLink(
   email: string,
   name: string
 ): Promise<{ sent: boolean; email: string; magicLink?: string }> {
-  const response = await fetch(`${API_BASE}/v1/auth/magic-link`, {
+  const response = await fetch(`${resolveApiBase()}/v1/auth/magic-link`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, name }),
@@ -80,7 +92,7 @@ export async function requestMagicLink(
 }
 
 export async function verifyMagicLink(token: string): Promise<AccountSession> {
-  const response = await fetch(`${API_BASE}/v1/auth/verify`, {
+  const response = await fetch(`${resolveApiBase()}/v1/auth/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
@@ -89,14 +101,14 @@ export async function verifyMagicLink(token: string): Promise<AccountSession> {
 }
 
 export async function logout(sessionToken: string): Promise<void> {
-  await fetch(`${API_BASE}/v1/auth/logout`, {
+  await fetch(`${resolveApiBase()}/v1/auth/logout`, {
     method: "POST",
     headers: authHeaders(sessionToken),
   });
 }
 
 export async function listProjects(sessionToken: string): Promise<ProjectSummary[]> {
-  const response = await fetch(`${API_BASE}/v1/projects`, {
+  const response = await fetch(`${resolveApiBase()}/v1/projects`, {
     headers: authHeaders(sessionToken),
     cache: "no-store",
   });
@@ -107,7 +119,7 @@ export async function createProject(
   sessionToken: string,
   input: { name: string; destinationUrl: string; dedupeHeader?: string }
 ): Promise<ProjectSummary> {
-  const response = await fetch(`${API_BASE}/v1/projects`, {
+  const response = await fetch(`${resolveApiBase()}/v1/projects`, {
     method: "POST",
     headers: authHeaders(sessionToken),
     body: JSON.stringify(input),
@@ -125,7 +137,7 @@ export async function updateProject(
     dedupeHeader?: string;
   }
 ): Promise<ProjectSummary> {
-  const response = await fetch(`${API_BASE}/v1/projects/${projectId}`, {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}`, {
     method: "PUT",
     headers: authHeaders(sessionToken),
     body: JSON.stringify(input),
@@ -134,16 +146,16 @@ export async function updateProject(
 }
 
 export async function getProviders(): Promise<{ magicLink: boolean; github: boolean }> {
-  const response = await fetch(`${API_BASE}/v1/auth/providers`, { cache: "no-store" });
+  const response = await fetch(`${resolveApiBase()}/v1/auth/providers`, { cache: "no-store" });
   return parse(response);
 }
 
 export function githubLoginUrl(): string {
-  return `${API_BASE}/v1/auth/github`;
+  return `${resolveApiBase()}/v1/auth/github`;
 }
 
 export async function getProject(sessionToken: string, projectId: string): Promise<ProjectSummary> {
-  const response = await fetch(`${API_BASE}/v1/projects/${projectId}`, {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}`, {
     headers: authHeaders(sessionToken),
     cache: "no-store",
   });
@@ -154,7 +166,7 @@ export async function rotateProjectKey(
   sessionToken: string,
   projectId: string
 ): Promise<ProjectSummary> {
-  const response = await fetch(`${API_BASE}/v1/projects/${projectId}/rotate-key`, {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}/rotate-key`, {
     method: "POST",
     headers: authHeaders(sessionToken),
   });
@@ -170,7 +182,7 @@ export async function listEvents(
   if (status) {
     params.set("status", status);
   }
-  const response = await fetch(`${API_BASE}/v1/events?${params.toString()}`, {
+  const response = await fetch(`${resolveApiBase()}/v1/events?${params.toString()}`, {
     headers: authHeaders(sessionToken),
     cache: "no-store",
   });
@@ -178,7 +190,7 @@ export async function listEvents(
 }
 
 export async function getEvent(sessionToken: string, eventId: string): Promise<EventDetail> {
-  const response = await fetch(`${API_BASE}/v1/events/${eventId}`, {
+  const response = await fetch(`${resolveApiBase()}/v1/events/${eventId}`, {
     headers: authHeaders(sessionToken),
     cache: "no-store",
   });
@@ -189,7 +201,7 @@ export async function replayEvent(
   sessionToken: string,
   eventId: string
 ): Promise<{ jobId: string }> {
-  const response = await fetch(`${API_BASE}/v1/events/${eventId}/replay`, {
+  const response = await fetch(`${resolveApiBase()}/v1/events/${eventId}/replay`, {
     method: "POST",
     headers: authHeaders(sessionToken),
   });
@@ -197,7 +209,7 @@ export async function replayEvent(
 }
 
 export async function getUsage(sessionToken: string): Promise<UsageInfo> {
-  const response = await fetch(`${API_BASE}/v1/billing/usage`, {
+  const response = await fetch(`${resolveApiBase()}/v1/billing/usage`, {
     headers: authHeaders(sessionToken),
     cache: "no-store",
   });
@@ -210,7 +222,7 @@ export async function startCheckout(
   cancelUrl: string,
   plan: "pro" | "business" = "pro"
 ): Promise<{ url: string }> {
-  const response = await fetch(`${API_BASE}/v1/billing/checkout`, {
+  const response = await fetch(`${resolveApiBase()}/v1/billing/checkout`, {
     method: "POST",
     headers: authHeaders(sessionToken),
     body: JSON.stringify({ successUrl, cancelUrl, plan }),
@@ -219,7 +231,7 @@ export async function startCheckout(
 }
 
 export async function openPortal(sessionToken: string, returnUrl: string): Promise<{ url: string }> {
-  const response = await fetch(`${API_BASE}/v1/billing/portal`, {
+  const response = await fetch(`${resolveApiBase()}/v1/billing/portal`, {
     method: "POST",
     headers: authHeaders(sessionToken),
     body: JSON.stringify({ returnUrl }),

@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hookguard
+      POSTGRES_USER: hookguard
+      POSTGRES_PASSWORD: hookguard
+    volumes:
+      - hookguard_free_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hookguard -d hookguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "18025:8025"
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.prebuilt
+    environment:
+      HOOKGUARD_DB_URL: jdbc:postgresql://postgres:5432/hookguard
+      HOOKGUARD_DB_USER: hookguard
+      HOOKGUARD_DB_PASSWORD: hookguard
+      HOOKGUARD_CORS_ORIGINS: http://localhost:9080
+      HOOKGUARD_APP_BASE_URL: http://localhost:9080
+      HOOKGUARD_API_BASE_URL: http://localhost:9080
+      HOOKGUARD_DELIVERY_ALLOW_HTTP: "true"
+      HOOKGUARD_EXPOSE_MAGIC_LINK: "true"
+      HOOKGUARD_TRUST_FORWARDED_HOST: "true"
+      HOOKGUARD_SMTP_HOST: mailpit
+      HOOKGUARD_SMTP_PORT: "1025"
+      HOOKGUARD_SMTP_AUTH: "false"
+      HOOKGUARD_SMTP_STARTTLS: "false"
+      HOOKGUARD_FROM_EMAIL: noreply@hookguard.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: same-origin
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2.9-alpine
+    ports:
+      - "9080:80"
+    volumes:
+      - ./deploy/Caddyfile.free:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - web
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://caddy:80
+    depends_on:
+      - caddy
+    restart: unless-stopped
+
+volumes:
+  hookguard_free_pg:
