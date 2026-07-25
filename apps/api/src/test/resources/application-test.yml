@@ -1,0 +1,19 @@
+spring:
+  main:
+    allow-bean-definition-overriding: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+hookguard:
+  worker:
+    enabled: false
+    poll-interval-ms: 200
+    batch-size: 10
+    lock-timeout-seconds: 30
+  delivery:
+    allow-http: true
+  billing:
+    free-monthly-events: 5
+    stripe-api-key: ""
+    stripe-webhook-secret: ""
