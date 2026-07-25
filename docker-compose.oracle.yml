@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${HOOKGUARD_DB_NAME:-hookguard}
+      POSTGRES_USER: ${HOOKGUARD_DB_USER:-hookguard}
+      POSTGRES_PASSWORD: ${HOOKGUARD_DB_PASSWORD:?set HOOKGUARD_DB_PASSWORD}
+    volumes:
+      - hookguard_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      HOOKGUARD_DB_URL: jdbc:postgresql://postgres:5432/${HOOKGUARD_DB_NAME:-hookguard}
+      HOOKGUARD_DB_USER: ${HOOKGUARD_DB_USER:-hookguard}
+      HOOKGUARD_DB_PASSWORD: ${HOOKGUARD_DB_PASSWORD}
+      HOOKGUARD_CORS_ORIGINS: ${HOOKGUARD_PUBLIC_ORIGIN}
+      HOOKGUARD_APP_BASE_URL: ${HOOKGUARD_PUBLIC_ORIGIN}
+      HOOKGUARD_API_BASE_URL: ${HOOKGUARD_PUBLIC_ORIGIN}
+      HOOKGUARD_DELIVERY_ALLOW_HTTP: "false"
+      HOOKGUARD_EXPOSE_MAGIC_LINK: ${HOOKGUARD_EXPOSE_MAGIC_LINK:-true}
+      HOOKGUARD_TRUST_FORWARDED_HOST: "true"
+      HOOKGUARD_SMTP_HOST: ${HOOKGUARD_SMTP_HOST:-}
+      HOOKGUARD_SMTP_PORT: ${HOOKGUARD_SMTP_PORT:-587}
+      HOOKGUARD_SMTP_USER: ${HOOKGUARD_SMTP_USER:-}
+      HOOKGUARD_SMTP_PASSWORD: ${HOOKGUARD_SMTP_PASSWORD:-}
+      HOOKGUARD_SMTP_AUTH: ${HOOKGUARD_SMTP_AUTH:-false}
+      HOOKGUARD_SMTP_STARTTLS: ${HOOKGUARD_SMTP_STARTTLS:-false}
+      HOOKGUARD_FROM_EMAIL: ${HOOKGUARD_FROM_EMAIL:-noreply@hookguard.local}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRO_PRICE_ID: ${STRIPE_PRO_PRICE_ID:-}
+      STRIPE_BUSINESS_PRICE_ID: ${STRIPE_BUSINESS_PRICE_ID:-}
+      STRIPE_METER_EVENT_NAME: ${STRIPE_METER_EVENT_NAME:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: same-origin
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.9-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/Caddyfile.free:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://caddy:80
+    depends_on:
+      - caddy
+    restart: unless-stopped
+
+volumes:
+  hookguard_pg:
