@@ -46,6 +46,10 @@ cd apps/web && npm install && npm run dev
 
 Painel em `http://localhost:9080` + URL HTTPS pública via túnel Cloudflare. Detalhes: [`docs/FREE.md`](docs/FREE.md).
 
+## Oracle Always Free (24/7)
+
+Guia completo: [`docs/ORACLE.md`](docs/ORACLE.md) — VM Ampere + Docker + túnel Cloudflare, sem domínio.
+
 ## Produção
 
 ```bash
