@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { requestMagicLink } from "@/lib/api";
+import { getProviders, githubLoginUrl, requestMagicLink } from "@/lib/api";
 import { loadSession } from "@/lib/session";
 
 export default function HomePage() {
@@ -13,11 +13,15 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [devLink, setDevLink] = useState<string | null>(null);
+  const [githubEnabled, setGithubEnabled] = useState(false);
 
   useEffect(() => {
     if (loadSession()) {
       router.replace("/app");
     }
+    getProviders()
+      .then((providers) => setGithubEnabled(providers.github))
+      .catch(() => setGithubEnabled(false));
   }, [router]);
 
   async function onSubmit(event: FormEvent) {
@@ -49,8 +53,15 @@ export default function HomePage() {
       <section className="panel" style={{ maxWidth: 520 }}>
         <h1 className="hero-title">Webhooks que não somem</h1>
         <p className="muted">
-          Informe seu e-mail. Enviamos um link mágico para entrar no painel — sem senha.
+          Informe seu e-mail para receber um link mágico — ou entre com GitHub.
         </p>
+        {githubEnabled ? (
+          <div className="actions">
+            <a className="button" href={githubLoginUrl()}>
+              Entrar com GitHub
+            </a>
+          </div>
+        ) : null}
         <form onSubmit={onSubmit} style={{ marginTop: "1.25rem" }}>
           <div className="field">
             <label htmlFor="email">E-mail</label>
@@ -72,7 +83,7 @@ export default function HomePage() {
               placeholder="Opcional"
             />
           </div>
-          <button className="button" type="submit" disabled={loading}>
+          <button className="button-secondary" type="submit" disabled={loading}>
             {loading ? "Enviando..." : "Enviar link de acesso"}
           </button>
           {sent ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import {
@@ -9,6 +9,7 @@ import {
   listEvents,
   replayEvent,
   rotateProjectKey,
+  updateProject,
   type EventDetail,
   type EventSummary,
   type ProjectSummary,
@@ -24,7 +25,12 @@ export default function ProjectDetailPage() {
   const [selected, setSelected] = useState<EventDetail | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [rotatedKey, setRotatedKey] = useState<string | null>(null);
+  const [destinationUrl, setDestinationUrl] = useState("");
+  const [timeoutMs, setTimeoutMs] = useState("10000");
+  const [maxAttempts, setMaxAttempts] = useState("6");
+  const [dedupeHeader, setDedupeHeader] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
   async function loadAll(sessionToken: string) {
@@ -33,6 +39,10 @@ export default function ProjectDetailPage() {
       listEvents(sessionToken, projectId, statusFilter || undefined),
     ]);
     setProject(projectData);
+    setDestinationUrl(projectData.destinationUrl);
+    setTimeoutMs(String(projectData.timeoutMs));
+    setMaxAttempts(String(projectData.maxAttempts));
+    setDedupeHeader(projectData.dedupeHeader ?? "");
     setEvents(eventData);
   }
 
@@ -88,13 +98,34 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function onSaveSettings(event: FormEvent) {
+    event.preventDefault();
+    const session = loadSession();
+    if (!session) {
+      return;
+    }
+    setSaved(false);
+    setError(null);
+    try {
+      const updated = await updateProject(session.sessionToken, projectId, {
+        destinationUrl: destinationUrl.trim(),
+        timeoutMs: Number(timeoutMs),
+        maxAttempts: Number(maxAttempts),
+        dedupeHeader: dedupeHeader.trim(),
+      });
+      setProject(updated);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "erro_salvar");
+    }
+  }
+
   return (
     <AppShell>
       <section className="panel">
         <h1 className="hero-title">{project?.name ?? "Projeto"}</h1>
         {project ? (
           <div className="stack">
-            <div className="muted mono">Destino: {project.destinationUrl}</div>
             <div className="muted mono">
               Ingest: {apiBase}/v1/ingest/&lt;projectKey&gt;
             </div>
@@ -103,9 +134,7 @@ export default function ProjectDetailPage() {
                 Nova projectKey: <strong>{rotatedKey}</strong>
               </div>
             ) : (
-              <div className="muted">
-                A projectKey só aparece na criação ou ao rotacionar.
-              </div>
+              <div className="muted">A projectKey só aparece na criação ou ao rotacionar.</div>
             )}
             <div className="actions" style={{ marginTop: 0 }}>
               <button className="button-secondary" type="button" onClick={onRotate}>
@@ -116,6 +145,59 @@ export default function ProjectDetailPage() {
         ) : (
           <p className="muted">Carregando...</p>
         )}
+      </section>
+
+      <section className="panel" style={{ marginTop: "1rem" }}>
+        <h2 style={{ marginTop: 0, fontFamily: "var(--font-display)" }}>Configurações</h2>
+        <form onSubmit={onSaveSettings}>
+          <div className="field">
+            <label htmlFor="destination">URL de destino</label>
+            <input
+              id="destination"
+              required
+              value={destinationUrl}
+              onChange={(e) => setDestinationUrl(e.target.value)}
+            />
+          </div>
+          <div className="grid-2">
+            <div className="field">
+              <label htmlFor="timeout">Timeout (ms)</label>
+              <input
+                id="timeout"
+                type="number"
+                min={500}
+                required
+                value={timeoutMs}
+                onChange={(e) => setTimeoutMs(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="attempts">Max attempts</label>
+              <input
+                id="attempts"
+                type="number"
+                min={1}
+                max={20}
+                required
+                value={maxAttempts}
+                onChange={(e) => setMaxAttempts(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="dedupe">Header de dedupe</label>
+            <input
+              id="dedupe"
+              value={dedupeHeader}
+              onChange={(e) => setDedupeHeader(e.target.value)}
+              placeholder="X-Idempotency-Key"
+            />
+          </div>
+          <button className="button" type="submit">
+            Salvar
+          </button>
+          {saved ? <p className="muted">Salvo.</p> : null}
+        </form>
       </section>
 
       <section className="grid-2" style={{ marginTop: "1rem" }}>

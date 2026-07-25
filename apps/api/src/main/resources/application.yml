@@ -18,15 +18,18 @@ spring:
   mail:
     host: ${HOOKGUARD_SMTP_HOST:localhost}
     port: ${HOOKGUARD_SMTP_PORT:1025}
+    username: ${HOOKGUARD_SMTP_USER:}
+    password: ${HOOKGUARD_SMTP_PASSWORD:}
     properties:
       mail:
         smtp:
-          auth: false
+          auth: ${HOOKGUARD_SMTP_AUTH:false}
           starttls:
-            enable: false
+            enable: ${HOOKGUARD_SMTP_STARTTLS:false}
 
 server:
   port: ${HOOKGUARD_PORT:8080}
+  forward-headers-strategy: framework
 
 management:
   endpoints:
@@ -51,19 +54,28 @@ hookguard:
     allow-http: ${HOOKGUARD_DELIVERY_ALLOW_HTTP:false}
   retention:
     days: 14
+  rate-limit:
+    ingest-per-minute: ${HOOKGUARD_INGEST_RATE_LIMIT:120}
   billing:
     free-monthly-events: 5000
+    pro-monthly-events: 100000
+    business-monthly-events: 1000000
     stripe-api-key: ${STRIPE_API_KEY:}
     stripe-webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
     stripe-pro-price-id: ${STRIPE_PRO_PRICE_ID:}
+    stripe-business-price-id: ${STRIPE_BUSINESS_PRICE_ID:}
+    stripe-meter-event-name: ${STRIPE_METER_EVENT_NAME:}
   cors:
     allowed-origins: ${HOOKGUARD_CORS_ORIGINS:http://localhost:3000}
   auth:
     app-base-url: ${HOOKGUARD_APP_BASE_URL:http://localhost:3000}
+    api-base-url: ${HOOKGUARD_API_BASE_URL:http://localhost:8080}
     from-email: ${HOOKGUARD_FROM_EMAIL:noreply@hookguard.local}
     magic-link-ttl-minutes: 20
     session-ttl-days: 30
     expose-magic-link: ${HOOKGUARD_EXPOSE_MAGIC_LINK:false}
+    github-client-id: ${GITHUB_CLIENT_ID:}
+    github-client-secret: ${GITHUB_CLIENT_SECRET:}
 
 logging:
   level:

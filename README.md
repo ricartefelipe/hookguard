@@ -4,19 +4,23 @@ Confiabilidade de webhooks para times que não querem operar mensageria só para
 
 Cole a URL de ingest no provedor, aponte o destino para o seu app. O HookGuard registra o evento, entrega com retry, move para DLQ quando esgota tentativas e permite replay manual.
 
+Guia de uso: [`docs/USAGE.md`](docs/USAGE.md)
+
 ## Stack
 
 - Java 21, Spring Boot 3, PostgreSQL 16
 - Fila de entrega no Postgres (`SKIP LOCKED`)
 - Painel operacional em Next.js
-- Cobrança self-serve via Stripe
+- Auth: magic link + GitHub OAuth
+- Cobrança self-serve via Stripe (Pro/Business + overage)
 
 ## Estrutura
 
 ```
-apps/api   — ingest, worker de entrega, API do painel
+apps/api   — ingest, worker, auth, billing
 apps/web   — dashboard
-docs/      — especificação e plano
+deploy/    — Caddyfile
+docs/      — especificação, plano e uso
 ```
 
 ## Desenvolvimento local
@@ -32,11 +36,16 @@ cd apps/web && npm install && npm run dev
 - API: `http://localhost:8080`
 - Painel: `http://localhost:3000`
 - Mailpit: `http://localhost:8025`
-- Testes da API: com Postgres no ar, `cd apps/api && mvn test`
+- Testes: `cd apps/api && mvn test`
 
-Variáveis sensíveis ficam em `.env` (não versionado). Use `.env.example` como referência.
+## Produção
 
-Fluxo rápido no painel: pedir magic link → abrir o e-mail no Mailpit (ou o link de dev) → criar projeto (guardar `projectKey`) → apontar o provedor para `/v1/ingest/{projectKey}` → acompanhar eventos e replay.
+```bash
+# .env com HOOKGUARD_DOMAIN, DB, SMTP, Stripe, GitHub OAuth
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+HTTPS via Caddy. Detalhes em `docs/USAGE.md`.
 
 ## Gitflow
 

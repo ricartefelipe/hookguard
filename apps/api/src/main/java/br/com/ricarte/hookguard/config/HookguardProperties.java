@@ -8,7 +8,8 @@ public record HookguardProperties(
         Delivery delivery,
         Retention retention,
         Billing billing,
-        Auth auth
+        Auth auth,
+        RateLimit rateLimit
 ) {
     public record Worker(boolean enabled, long pollIntervalMs, int batchSize, int lockTimeoutSeconds) {
     }
@@ -21,18 +22,28 @@ public record HookguardProperties(
 
     public record Billing(
             long freeMonthlyEvents,
+            long proMonthlyEvents,
+            long businessMonthlyEvents,
             String stripeApiKey,
             String stripeWebhookSecret,
-            String stripeProPriceId
+            String stripeProPriceId,
+            String stripeBusinessPriceId,
+            String stripeMeterEventName
     ) {
     }
 
     public record Auth(
             String appBaseUrl,
+            String apiBaseUrl,
             String fromEmail,
             int magicLinkTtlMinutes,
             int sessionTtlDays,
-            boolean exposeMagicLink
+            boolean exposeMagicLink,
+            String githubClientId,
+            String githubClientSecret
     ) {
+    }
+
+    public record RateLimit(int ingestPerMinute) {
     }
 }

@@ -94,7 +94,12 @@ public class AuthService {
 
         Account account = accountRepository.findById(loginToken.getAccountId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token"));
+        return createSessionForAccount(account);
+    }
 
+    @Transactional
+    public Map<String, Object> createSessionForAccount(Account account) {
+        Instant now = Instant.now();
         String sessionRaw = randomToken(32);
         Session session = new Session(
                 UUID.randomUUID(),
@@ -134,7 +139,10 @@ public class AuthService {
         body.put("email", account.getEmail());
         body.put("plan", account.getPlan().toStorage());
         body.put("usage", usageService.currentUsage(accountId));
+        body.put("includedMonthlyEvents", usageService.includedEvents(account.getPlan()));
         body.put("freeMonthlyEvents", properties.billing().freeMonthlyEvents());
+        body.put("githubOAuthConfigured", properties.auth().githubClientId() != null
+                && !properties.auth().githubClientId().isBlank());
         return body;
     }
 

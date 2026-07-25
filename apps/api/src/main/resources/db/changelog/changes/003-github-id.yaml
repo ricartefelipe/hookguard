@@ -1,0 +1,18 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-github-id
+      author: hookguard
+      changes:
+        - addColumn:
+            tableName: accounts
+            columns:
+              - column:
+                  name: github_id
+                  type: varchar(64)
+        - createIndex:
+            tableName: accounts
+            indexName: uq_accounts_github_id
+            unique: true
+            columns:
+              - column:
+                  name: github_id

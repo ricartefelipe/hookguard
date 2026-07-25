@@ -29,6 +29,7 @@ public class IngestService {
     private final WebhookEventRepository webhookEventRepository;
     private final DeliveryJobRepository deliveryJobRepository;
     private final UsageService usageService;
+    private final IngestRateLimiter ingestRateLimiter;
     private final ObjectMapper objectMapper;
 
     public IngestService(
@@ -36,12 +37,14 @@ public class IngestService {
             WebhookEventRepository webhookEventRepository,
             DeliveryJobRepository deliveryJobRepository,
             UsageService usageService,
+            IngestRateLimiter ingestRateLimiter,
             ObjectMapper objectMapper
     ) {
         this.projectRepository = projectRepository;
         this.webhookEventRepository = webhookEventRepository;
         this.deliveryJobRepository = deliveryJobRepository;
         this.usageService = usageService;
+        this.ingestRateLimiter = ingestRateLimiter;
         this.objectMapper = objectMapper;
     }
 
@@ -52,6 +55,7 @@ public class IngestService {
         if (project.getStatus() == ProjectStatus.SUSPENDED) {
             throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "project_suspended");
         }
+        ingestRateLimiter.check(project.getId());
 
         String dedupeKey = resolveDedupeKey(project, headers);
         if (dedupeKey != null) {

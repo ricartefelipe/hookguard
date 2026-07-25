@@ -1,13 +1,13 @@
 package br.com.ricarte.hookguard.billing;
 
 import br.com.ricarte.hookguard.config.HookguardProperties;
-import br.com.ricarte.hookguard.domain.Account;
 import br.com.ricarte.hookguard.domain.AccountPlan;
 import br.com.ricarte.hookguard.domain.AccountRepository;
 import br.com.ricarte.hookguard.web.ApiException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.Subscription;
+import com.stripe.model.SubscriptionItem;
 import com.stripe.net.Webhook;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -88,6 +88,15 @@ public class StripeWebhookController {
         String status = subscription.getStatus();
         if (!"active".equals(status) && !"trialing".equals(status)) {
             return AccountPlan.FREE;
+        }
+        String businessPrice = properties.billing().stripeBusinessPriceId();
+        if (subscription.getItems() != null) {
+            for (SubscriptionItem item : subscription.getItems().getData()) {
+                if (item.getPrice() != null && item.getPrice().getId() != null
+                        && item.getPrice().getId().equals(businessPrice)) {
+                    return AccountPlan.BUSINESS;
+                }
+            }
         }
         return AccountPlan.PRO;
     }
