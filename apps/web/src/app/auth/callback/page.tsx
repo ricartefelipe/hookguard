@@ -1,16 +1,22 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { resolveApiBase, verifyMagicLink } from "@/lib/api";
-import { saveSession, type AccountSession } from "@/lib/session";
+import { loadSession, saveSession, type AccountSession } from "@/lib/session";
 
 function CallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) {
+      return;
+    }
+    started.current = true;
+
     const sessionToken = params.get("sessionToken");
     const token = params.get("token");
 
@@ -47,6 +53,11 @@ function CallbackInner() {
     }
 
     if (!token) {
+      const existing = loadSession();
+      if (existing?.sessionToken) {
+        router.replace("/app");
+        return;
+      }
       setError("token_ausente");
       return;
     }
@@ -55,7 +66,14 @@ function CallbackInner() {
         saveSession(session);
         router.replace("/app");
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "falha_verify"));
+      .catch((err) => {
+        const existing = loadSession();
+        if (existing?.sessionToken) {
+          router.replace("/app");
+          return;
+        }
+        setError(err instanceof Error ? err.message : "falha_verify");
+      });
   }, [params, router]);
 
   return (
