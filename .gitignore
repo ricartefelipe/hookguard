@@ -43,3 +43,7 @@ Thumbs.db
 *.log
 tmp/
 .temp/
+.cursor/
+.superpowers/
+AGENTS.md
+PROMPT-EVOLUCAO.md
