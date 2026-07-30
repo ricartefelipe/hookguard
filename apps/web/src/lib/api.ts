@@ -100,6 +100,18 @@ export async function verifyMagicLink(token: string): Promise<AccountSession> {
   return parse<AccountSession>(response);
 }
 
+export async function loginWithPassword(
+  email: string,
+  password: string
+): Promise<AccountSession> {
+  const response = await fetch(`${resolveApiBase()}/v1/auth/password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  return parse<AccountSession>(response);
+}
+
 export async function logout(sessionToken: string): Promise<void> {
   await fetch(`${resolveApiBase()}/v1/auth/logout`, {
     method: "POST",
