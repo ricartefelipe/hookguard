@@ -69,6 +69,7 @@ public class AccountAuthFilter extends OncePerRequestFilter {
         }
         if (path.startsWith("/v1/auth/magic-link")
                 || path.startsWith("/v1/auth/verify")
+                || path.startsWith("/v1/auth/password")
                 || path.startsWith("/v1/auth/github")
                 || path.startsWith("/v1/auth/providers")) {
             return false;
