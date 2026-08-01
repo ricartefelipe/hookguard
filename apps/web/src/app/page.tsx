@@ -2,13 +2,14 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getProviders, githubLoginUrl, requestMagicLink } from "@/lib/api";
-import { loadSession } from "@/lib/session";
+import { getProviders, githubLoginUrl, loginWithPassword, requestMagicLink } from "@/lib/api";
+import { loadSession, saveSession } from "@/lib/session";
 
 export default function HomePage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -38,6 +39,20 @@ export default function HomePage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "falha_ao_enviar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onPassword(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      saveSession(await loginWithPassword(email.trim(), password));
+      router.replace("/app");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "invalid_credentials");
     } finally {
       setLoading(false);
     }
@@ -95,6 +110,22 @@ export default function HomePage() {
             </p>
           ) : null}
           {error ? <p className="error">{error}</p> : null}
+        </form>
+        <form onSubmit={onPassword} style={{ marginTop: "1.25rem" }}>
+          <div className="field">
+            <label htmlFor="password">Senha</label>
+            <input
+              id="password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+          <button className="button" type="submit" disabled={loading}>
+            {loading ? "Entrando..." : "Entrar com senha"}
+          </button>
         </form>
       </section>
     </div>

@@ -79,4 +79,15 @@ class AuthIntegrationTest extends PostgresIntegrationTest {
 
         assertThat(sessionToken).hasSizeGreaterThan(20);
     }
+
+    @Test
+    void passwordLoginRejectsUnknownCredentials() throws Exception {
+        mockMvc.perform(post("/v1/auth/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"missing@example.com","password":"not-the-password"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("invalid_credentials"));
+    }
 }
