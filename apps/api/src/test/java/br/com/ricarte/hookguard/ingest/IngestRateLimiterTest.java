@@ -28,7 +28,8 @@ class IngestRateLimiterTest {
                         "",
                         ""
                 ),
-                new HookguardProperties.RateLimit(2)
+                new HookguardProperties.RateLimit(2),
+                new HookguardProperties.Totalrecall("")
         );
         IngestRateLimiter limiter = new IngestRateLimiter(properties);
         UUID projectId = UUID.randomUUID();
