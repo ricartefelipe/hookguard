@@ -45,6 +45,7 @@ cd apps/web && npm install && npm run dev
 ```
 
 Painel em `http://localhost:9080` + URL HTTPS pública via túnel Cloudflare. Detalhes: [`docs/FREE.md`](docs/FREE.md).
+O login por senha usa o sistema TotalRecall `hookguard`; configure `TOTALRECALL_URL=https://54.94.163.136.sslip.io`.
 
 ## Oracle Always Free (24/7)
 
