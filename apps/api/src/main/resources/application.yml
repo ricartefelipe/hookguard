@@ -78,10 +78,7 @@ hookguard:
     github-client-id: ${GITHUB_CLIENT_ID:}
     github-client-secret: ${GITHUB_CLIENT_SECRET:}
   totalrecall:
-    enabled: ${TOTALRECALL_ENABLED:true}
-    base-url: ${TOTALRECALL_URL:https://54.94.163.136.sslip.io}
-    system-slug: ${TOTALRECALL_SYSTEM_SLUG:hookguard}
-
+    provision-token: ${TOTALRECALL_PROVISION_TOKEN:}
 logging:
   level:
     root: INFO

@@ -9,7 +9,8 @@ public record HookguardProperties(
         Retention retention,
         Billing billing,
         Auth auth,
-        RateLimit rateLimit
+        RateLimit rateLimit,
+        Totalrecall totalrecall
 ) {
     public record Worker(boolean enabled, long pollIntervalMs, int batchSize, int lockTimeoutSeconds) {
     }
@@ -46,5 +47,8 @@ public record HookguardProperties(
     }
 
     public record RateLimit(int ingestPerMinute) {
+    }
+
+    public record Totalrecall(String provisionToken) {
     }
 }

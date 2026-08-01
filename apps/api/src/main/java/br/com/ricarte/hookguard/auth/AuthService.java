@@ -3,6 +3,7 @@ package br.com.ricarte.hookguard.auth;
 import br.com.ricarte.hookguard.billing.UsageService;
 import br.com.ricarte.hookguard.config.HookguardProperties;
 import br.com.ricarte.hookguard.domain.Account;
+import br.com.ricarte.hookguard.domain.AccountPlan;
 import br.com.ricarte.hookguard.domain.AccountRepository;
 import br.com.ricarte.hookguard.domain.LoginToken;
 import br.com.ricarte.hookguard.domain.LoginTokenRepository;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +36,7 @@ public class AuthService {
     private final UsageService usageService;
     private final HookguardProperties properties;
     private final JavaMailSender mailSender;
-    private final TotalRecallClient totalRecallClient;
+    private final PasswordEncoder passwordEncoder;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthService(
@@ -45,7 +47,7 @@ public class AuthService {
             UsageService usageService,
             HookguardProperties properties,
             JavaMailSender mailSender,
-            TotalRecallClient totalRecallClient
+            PasswordEncoder passwordEncoder
     ) {
         this.projectService = projectService;
         this.accountRepository = accountRepository;
@@ -54,7 +56,7 @@ public class AuthService {
         this.usageService = usageService;
         this.properties = properties;
         this.mailSender = mailSender;
-        this.totalRecallClient = totalRecallClient;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional
@@ -92,51 +94,65 @@ public class AuthService {
 
     @Transactional
     public Map<String, Object> verifyMagicLink(String rawToken) {
-        Optional<LoginToken> local = loginTokenRepository.findByTokenHash(TokenHasher.sha256(rawToken));
-        if (local.isPresent()) {
-            LoginToken loginToken = local.get();
-            Instant now = Instant.now();
-            if (loginToken.getConsumedAt() != null || loginToken.getExpiresAt().isBefore(now)) {
-                throw new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token");
-            }
-            loginToken.consume(now);
-            loginTokenRepository.save(loginToken);
-
-            Account account = accountRepository.findById(loginToken.getAccountId())
-                    .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token"));
-            return createSessionForAccount(account);
-        }
-
-        Map<String, Object> tr = totalRecallClient.validateToken(rawToken);
-        if (!Boolean.TRUE.equals(tr.get("valid"))) {
+        LoginToken loginToken = loginTokenRepository.findByTokenHash(TokenHasher.sha256(rawToken))
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token"));
+        Instant now = Instant.now();
+        if (loginToken.getConsumedAt() != null || loginToken.getExpiresAt().isBefore(now)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token");
         }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> profile = (Map<String, Object>) tr.get("profile");
-        String email = profile == null ? null : String.valueOf(profile.get("email"));
-        String name = profile == null ? email : String.valueOf(profile.getOrDefault("name", email));
-        if (email == null || email.isBlank() || "null".equals(email)) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token");
-        }
-        Account account = projectService.ensureAccount(email, name);
+        loginToken.consume(now);
+        loginTokenRepository.save(loginToken);
+
+        Account account = accountRepository.findById(loginToken.getAccountId())
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token"));
         return createSessionForAccount(account);
     }
 
     @Transactional
     public Map<String, Object> loginWithPassword(String email, String password) {
-        Map<String, Object> tr = totalRecallClient.login(email, password);
-        if (!Boolean.TRUE.equals(tr.get("valid"))) {
+        Account account = accountRepository.findByEmail(email)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "invalid_credentials"));
+        if (!accountActive(account) || account.getPasswordHash() == null
+                || !passwordEncoder.matches(password, account.getPasswordHash())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "invalid_credentials");
         }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> profile = (Map<String, Object>) tr.get("profile");
-        String name = profile == null ? email : String.valueOf(profile.getOrDefault("name", email));
-        Account account = projectService.ensureAccount(email, name);
         return createSessionForAccount(account);
     }
 
     @Transactional
+    public Account provision(String email, String name, String password, String role, Instant expiresAt, String action) {
+        Account account = accountRepository.findByEmail(email)
+                .orElseGet(() -> projectService.ensureAccount(email, name == null || name.isBlank() ? email : name));
+        if ("disable".equals(action)) {
+            account.setEnabled(false);
+            sessionRepository.deleteByAccountId(account.getId());
+            return accountRepository.save(account);
+        }
+        if ("revoke".equals(action)) {
+            sessionRepository.deleteByAccountId(account.getId());
+            return account;
+        }
+        if (name != null && !name.isBlank()) {
+            account.setName(name);
+        }
+        if (password != null && !password.isBlank()) {
+            account.setPasswordHash(passwordEncoder.encode(password));
+        }
+        if ("pro".equals(role)) {
+            account.setPlan(AccountPlan.PRO);
+        } else if ("business".equals(role)) {
+            account.setPlan(AccountPlan.BUSINESS);
+        }
+        account.setEnabled(true);
+        account.setExpiresAt(expiresAt);
+        return accountRepository.save(account);
+    }
+
+    @Transactional
     public Map<String, Object> createSessionForAccount(Account account) {
+        if (!accountActive(account)) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "account_unavailable");
+        }
         Instant now = Instant.now();
         String sessionRaw = randomToken(32);
         Session session = new Session(
@@ -157,7 +173,8 @@ public class AuthService {
         }
         return sessionRepository.findByTokenHash(TokenHasher.sha256(sessionRaw))
                 .filter(session -> session.active(Instant.now()))
-                .map(Session::getAccountId);
+                .map(Session::getAccountId)
+                .filter(accountId -> accountRepository.findById(accountId).map(this::accountActive).orElse(false));
     }
 
     @Transactional
@@ -203,5 +220,9 @@ public class AuthService {
         byte[] buffer = new byte[bytes];
         secureRandom.nextBytes(buffer);
         return HexFormat.of().formatHex(buffer);
+    }
+
+    private boolean accountActive(Account account) {
+        return account.isEnabled() && (account.getExpiresAt() == null || account.getExpiresAt().isAfter(Instant.now()));
     }
 }
