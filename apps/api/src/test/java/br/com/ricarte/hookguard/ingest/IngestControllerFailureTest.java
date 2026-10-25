@@ -1,5 +1,6 @@
 package br.com.ricarte.hookguard.ingest;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -53,6 +54,55 @@ class IngestControllerFailureTest {
                 .isInstanceOf(DataAccessResourceFailureException.class);
     }
 
+    @Test
+    void rateLimitedRequestIsRefusedBeforeItsBodyIsRead() throws Exception {
+        IngestService service = mock(IngestService.class);
+        org.mockito.Mockito.doThrow(new br.com.ricarte.hookguard.web.ApiException(
+                org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "rate_limited", 5)).when(service).admit(any());
+        IngestController controller = new IngestController(service, properties());
+        HttpServletRequest request = mock(HttpServletRequest.class);
+
+        assertThatThrownBy(() -> controller.ingest("project-key", request))
+                .isInstanceOf(br.com.ricarte.hookguard.web.ApiException.class);
+
+        org.mockito.Mockito.verify(request, org.mockito.Mockito.never()).getInputStream();
+        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).accept(any(), any(), any(), any());
+    }
+
+    @Test
+    void concurrencyGateRefusesWhenAllSlotsAreBusy() throws Exception {
+        IngestService service = mock(IngestService.class);
+        HookguardProperties base = properties();
+        HookguardProperties oneSlot = new HookguardProperties(base.worker(), base.delivery(), base.retention(), base.billing(),
+                base.auth(), base.rateLimit(), new HookguardProperties.Ingest(2048, 24, 1), base.totalrecall());
+        IngestController controller = new IngestController(service, oneSlot);
+        java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(call -> {
+            inside.countDown();
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            return null;
+        }).when(service).admit(any());
+        HttpServletRequest first = mock(HttpServletRequest.class);
+        Thread holder = new Thread(() -> {
+            try {
+                controller.ingest("k", first);
+            } catch (Exception ignored) {
+            }
+        });
+        holder.start();
+        try {
+            assertThat(inside.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> controller.ingest("k", mock(HttpServletRequest.class)))
+                    .isInstanceOf(br.com.ricarte.hookguard.web.ApiException.class)
+                    .extracting(ex -> ((br.com.ricarte.hookguard.web.ApiException) ex).getCode())
+                    .isEqualTo("ingest_busy");
+        } finally {
+            release.countDown();
+            holder.join();
+        }
+    }
+
     private static HookguardProperties properties() {
         return new HookguardProperties(
                 new HookguardProperties.Worker(false, 1000, 10, 120),
@@ -72,7 +122,7 @@ class IngestControllerFailureTest {
                         ""
                 ),
                 new HookguardProperties.RateLimit(100),
-                new HookguardProperties.Ingest(2048, 24),
+                new HookguardProperties.Ingest(2048, 24, 64),
                 new HookguardProperties.Totalrecall("")
         );
     }

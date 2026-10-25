@@ -50,11 +50,19 @@ public final class DestinationUrlValidator {
         if (host == null || host.isBlank() || !hostMatches(uri, host)) {
             throw new IllegalArgumentException("destinationUrl host is required");
         }
+        // URI.getHost() keeps the brackets of an IPv6 literal; the resolver, Host header and TLS need the bare address.
+        boolean ipv6Literal = host.startsWith("[") && host.endsWith("]");
+        if (ipv6Literal) {
+            host = host.substring(1, host.length() - 1);
+            if (host.isEmpty() || host.indexOf('%') >= 0 || host.indexOf(':') < 0) {
+                throw new IllegalArgumentException("destinationUrl is invalid");
+            }
+        }
         String normalized = host.toLowerCase(Locale.ROOT);
         if (METADATA_HOSTS.contains(normalized) || normalized.endsWith(".metadata.google.internal")) {
             throw new IllegalArgumentException("destinationUrl host is not allowed");
         }
-        if (ambiguousNumericHost(normalized)) {
+        if (!ipv6Literal && ambiguousNumericHost(normalized)) {
             throw new IllegalArgumentException("destinationUrl host is not allowed");
         }
         int port = uri.getPort();
@@ -68,10 +76,10 @@ public final class DestinationUrlValidator {
         try {
             addresses = resolver.resolve(host);
         } catch (UnknownHostException ex) {
-            throw new IllegalArgumentException("destinationUrl host cannot be resolved");
+            throw new HostUnresolvedException();
         }
         if (addresses == null || addresses.length == 0) {
-            throw new IllegalArgumentException("destinationUrl host cannot be resolved");
+            throw new HostUnresolvedException();
         }
         for (InetAddress address : addresses) {
             if (isBlocked(address, allowHttp)) {
@@ -92,6 +100,13 @@ public final class DestinationUrlValidator {
             if ((first & 0xfe) == 0xfc) {
                 return !allowPrivate;
             }
+            InetAddress embedded = embeddedIpv4(raw);
+            if (embedded != null) {
+                return isBlocked(embedded, allowPrivate);
+            }
+            if (reservedIpv6(raw)) {
+                return true;
+            }
         }
         if (raw.length == 4) {
             int b0 = raw[0] & 0xff;
@@ -100,7 +115,13 @@ public final class DestinationUrlValidator {
             if (b0 == 0 || b0 == 255) {
                 return true;
             }
-            if (b0 == 192 && b1 == 0 && b2 == 0) {
+            if (b0 >= 240) {
+                return true;
+            }
+            if (b0 == 192 && b1 == 0 && (b2 == 0 || b2 == 2)) {
+                return true;
+            }
+            if ((b0 == 198 && b1 == 51 && b2 == 100) || (b0 == 203 && b1 == 0 && b2 == 113)) {
                 return true;
             }
             if (b0 == 198 && (b1 == 18 || b1 == 19)) {
@@ -112,6 +133,59 @@ public final class DestinationUrlValidator {
         }
         if (address.isLoopbackAddress() || address.isSiteLocalAddress()) {
             return !allowPrivate;
+        }
+        return false;
+    }
+
+    /** IPv4 carried inside NAT64 (64:ff9b::/96), 6to4 (2002::/16) or the deprecated IPv4-compatible form. */
+    private static InetAddress embeddedIpv4(byte[] raw) {
+        byte[] v4 = null;
+        boolean nat64 = (raw[0] & 0xff) == 0x00 && (raw[1] & 0xff) == 0x64 && (raw[2] & 0xff) == 0xff && (raw[3] & 0xff) == 0x9b;
+        if (nat64) {
+            boolean zeros = true;
+            for (int i = 4; i < 12; i++) {
+                zeros &= raw[i] == 0;
+            }
+            if (zeros) {
+                v4 = new byte[] {raw[12], raw[13], raw[14], raw[15]};
+            }
+        } else if ((raw[0] & 0xff) == 0x20 && (raw[1] & 0xff) == 0x02) {
+            v4 = new byte[] {raw[2], raw[3], raw[4], raw[5]};
+        } else {
+            boolean zeros = true;
+            for (int i = 0; i < 12; i++) {
+                zeros &= raw[i] == 0;
+            }
+            boolean loopbackOrAny = zeros && raw[12] == 0 && raw[13] == 0 && raw[14] == 0;
+            if (zeros && !loopbackOrAny) {
+                v4 = new byte[] {raw[12], raw[13], raw[14], raw[15]};
+            }
+        }
+        if (v4 == null) {
+            return null;
+        }
+        try {
+            return InetAddress.getByAddress(v4);
+        } catch (UnknownHostException ex) {
+            return null;
+        }
+    }
+
+    /** Documentation (2001:db8::/32), Teredo (2001::/32) and discard-only (100::/64) space is never a delivery target. */
+    private static boolean reservedIpv6(byte[] raw) {
+        int b0 = raw[0] & 0xff;
+        int b1 = raw[1] & 0xff;
+        int b2 = raw[2] & 0xff;
+        int b3 = raw[3] & 0xff;
+        if (b0 == 0x20 && b1 == 0x01 && ((b2 == 0x0d && b3 == 0xb8) || (b2 == 0 && b3 == 0))) {
+            return true;
+        }
+        if (b0 == 0x01 && b1 == 0 && b2 == 0 && b3 == 0) {
+            boolean zeros = true;
+            for (int i = 4; i < 8; i++) {
+                zeros &= raw[i] == 0;
+            }
+            return zeros;
         }
         return false;
     }
@@ -161,7 +235,7 @@ public final class DestinationUrlValidator {
             return false;
         }
         String expected = host;
-        if (host.indexOf(':') >= 0) {
+        if (host.indexOf(':') >= 0 && !host.startsWith("[")) {
             expected = "[" + host + "]";
         }
         return authority.equals(expected) || authority.startsWith(expected + ":");

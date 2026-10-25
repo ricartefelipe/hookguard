@@ -13,6 +13,11 @@
 		reverse_proxy api:8080
 	}
 
+	# The panel serves no optimised images; keep the Next.js image optimizer off the public hostname.
+	handle /_next/image* {
+		respond 404
+	}
+
 	handle {
 		reverse_proxy web:3000
 	}

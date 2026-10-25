@@ -15,6 +15,8 @@ spring:
           time_zone: UTC
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
+    parameters:
+      dedupeTtlHours: ${HOOKGUARD_DEDUPE_TTL_HOURS:24}
   mail:
     host: ${HOOKGUARD_SMTP_HOST:localhost}
     port: ${HOOKGUARD_SMTP_PORT:1025}
@@ -74,6 +76,7 @@ hookguard:
   ingest:
     max-body-bytes: ${HOOKGUARD_MAX_BODY_BYTES:1048576}
     dedupe-ttl-hours: ${HOOKGUARD_DEDUPE_TTL_HOURS:24}
+    max-concurrent-requests: ${HOOKGUARD_INGEST_MAX_CONCURRENT:64}
   retention:
     days: 14
   rate-limit:

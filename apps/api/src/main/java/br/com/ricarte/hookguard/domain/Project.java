@@ -44,6 +44,15 @@ public class Project {
     @Column(name = "signing_secret_rotated_at")
     private Instant signingSecretRotatedAt;
 
+    @Column(name = "source_auth_mode", nullable = false, length = 20)
+    private String sourceAuthMode = "none";
+
+    @Column(name = "source_secret", length = 200)
+    private String sourceSecret;
+
+    @Column(name = "source_tolerance_seconds", nullable = false)
+    private int sourceToleranceSeconds = 300;
+
     @Column(nullable = false, length = 40)
     private String status;
 
@@ -137,6 +146,24 @@ public class Project {
 
     public void setSigningSecret(String signingSecret) {
         this.signingSecret = signingSecret;
+    }
+
+    public String getSourceAuthMode() {
+        return sourceAuthMode;
+    }
+
+    public String getSourceSecret() {
+        return sourceSecret;
+    }
+
+    public int getSourceToleranceSeconds() {
+        return sourceToleranceSeconds;
+    }
+
+    public void configureSourceAuth(String mode, String secret, int toleranceSeconds) {
+        this.sourceAuthMode = mode;
+        this.sourceSecret = secret;
+        this.sourceToleranceSeconds = toleranceSeconds;
     }
 
     public String getSigningSecretPrevious() {

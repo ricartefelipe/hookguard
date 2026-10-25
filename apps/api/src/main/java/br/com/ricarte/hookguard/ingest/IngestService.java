@@ -64,26 +64,49 @@ public class IngestService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
+    /**
+     * First gate of an ingest request, run before the body is read: the project must exist and be
+     * active, and its request budget (shared across instances) must have room.
+     */
+    public void admit(String projectKey) {
+        Project project = projectRepository.findByProjectKey(projectKey)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project_not_found"));
+        if (project.getStatus() == ProjectStatus.SUSPENDED) {
+            throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "project_suspended");
+        }
+        ingestRateLimiter.check(project.getId());
+    }
+
+    /** Accepts an inbound webhook, verifying the sender's signature when the project requires it. */
     public UUID accept(String projectKey, Map<String, String> headers, byte[] body, String contentType) {
+        return acceptWith(projectKey, headers, body, contentType, true);
+    }
+
+    /** Accepts an event created by the account owner from the panel; there is no external sender to verify. */
+    public UUID acceptFromOwner(String projectKey, Map<String, String> headers, byte[] body, String contentType) {
+        return acceptWith(projectKey, headers, body, contentType, false);
+    }
+
+    private UUID acceptWith(String projectKey, Map<String, String> headers, byte[] body, String contentType, boolean verifySource) {
         try {
-            return execute(projectKey, headers, body, contentType);
+            return execute(projectKey, headers, body, contentType, verifySource);
         } catch (RuntimeException ex) {
             if (!isIntegrity(ex)) {
                 throw ex;
             }
-            return execute(projectKey, headers, body, contentType);
+            return execute(projectKey, headers, body, contentType, verifySource);
         }
     }
 
-    private UUID execute(String projectKey, Map<String, String> headers, byte[] body, String contentType) {
-        UUID id = transactionTemplate.execute(status -> doAccept(projectKey, headers, body, contentType));
+    private UUID execute(String projectKey, Map<String, String> headers, byte[] body, String contentType, boolean verifySource) {
+        UUID id = transactionTemplate.execute(status -> doAccept(projectKey, headers, body, contentType, verifySource));
         if (id == null) {
             throw new IllegalStateException("ingest did not persist an event");
         }
         return id;
     }
 
-    private UUID doAccept(String projectKey, Map<String, String> headers, byte[] body, String contentType) {
+    private UUID doAccept(String projectKey, Map<String, String> headers, byte[] body, String contentType, boolean verifySource) {
         Project project = projectRepository.findByProjectKey(projectKey)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project_not_found"));
         if (project.getStatus() == ProjectStatus.SUSPENDED) {
@@ -97,11 +120,33 @@ public class IngestService {
         if (maxBody > 0 && payload.length > maxBody) {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "payload_too_large");
         }
-        ingestRateLimiter.check(project.getId());
 
+        Instant now = Instant.now();
+        String replayKey = null;
+        if (verifySource) {
+            SourceAuthVerifier.Result verified = SourceAuthVerifier.verify(
+                    sourceMode(project),
+                    project.getSourceSecret(),
+                    project.getSourceToleranceSeconds(),
+                    headers,
+                    payload,
+                    now
+            );
+            replayKey = verified.replayKey();
+        }
         String fingerprint = PayloadFingerprint.sha256(payload);
         String dedupeKey = resolveDedupeKey(project, headers);
-        Instant now = Instant.now();
+        if (replayKey != null) {
+            // The exact same signed delivery arriving again inside the tolerance window is one event.
+            Optional<IngestDedupe> seen = ingestDedupeRepository.findById(new IngestDedupe.Key(project.getId(), replayKey));
+            if (seen.isPresent()) {
+                if (seen.get().getExpiresAt().isAfter(now)) {
+                    return seen.get().getEventId();
+                }
+                ingestDedupeRepository.delete(seen.get());
+                ingestDedupeRepository.flush();
+            }
+        }
         if (dedupeKey != null) {
             Optional<IngestDedupe> existing = ingestDedupeRepository.findById(new IngestDedupe.Key(project.getId(), dedupeKey));
             if (existing.isPresent()) {
@@ -148,7 +193,24 @@ public class IngestService {
                     now.plus(ttlHours, ChronoUnit.HOURS)
             ));
         }
+        if (replayKey != null) {
+            ingestDedupeRepository.save(new IngestDedupe(
+                    project.getId(),
+                    replayKey,
+                    eventId,
+                    fingerprint,
+                    now.plusSeconds(Math.max(project.getSourceToleranceSeconds(), 1) * 2L)
+            ));
+        }
         return eventId;
+    }
+
+    private static SourceAuthVerifier.Mode sourceMode(Project project) {
+        try {
+            return SourceAuthVerifier.Mode.fromStorage(project.getSourceAuthMode());
+        } catch (IllegalArgumentException ex) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "source_auth_misconfigured");
+        }
     }
 
     private String resolveDedupeKey(Project project, Map<String, String> headers) {
@@ -163,7 +225,8 @@ public class IngestService {
                     return null;
                 }
                 String trimmed = value.trim();
-                if (trimmed.length() > 500 || trimmed.indexOf('\r') >= 0 || trimmed.indexOf('\n') >= 0) {
+                if (trimmed.length() > 500 || trimmed.indexOf('\r') >= 0 || trimmed.indexOf('\n') >= 0
+                        || trimmed.startsWith(SourceAuthVerifier.REPLAY_PREFIX)) {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "dedupe_key_invalid");
                 }
                 return trimmed;

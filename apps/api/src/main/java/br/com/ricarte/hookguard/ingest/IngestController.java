@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Semaphore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,12 +19,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/v1/ingest")
 public class IngestController {
 
+    private static final int DEFAULT_MAX_CONCURRENT = 64;
+
     private final IngestService ingestService;
     private final HookguardProperties properties;
+    private final Semaphore inFlight;
 
     public IngestController(IngestService ingestService, HookguardProperties properties) {
         this.ingestService = ingestService;
         this.properties = properties;
+        int permits = properties.ingest().maxConcurrentRequests();
+        this.inFlight = new Semaphore(permits > 0 ? permits : DEFAULT_MAX_CONCURRENT);
     }
 
     @PostMapping("/{projectKey}")
@@ -31,6 +37,22 @@ public class IngestController {
             @PathVariable String projectKey,
             HttpServletRequest request
     ) throws Exception {
+        if (!inFlight.tryAcquire()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ingest_busy", 1);
+        }
+        try {
+            return handle(projectKey, request);
+        } finally {
+            inFlight.release();
+        }
+    }
+
+    private ResponseEntity<Map<String, String>> handle(String projectKey, HttpServletRequest request) throws Exception {
+        // Abuse control and cheap rejections come first so that no request body is read for them.
+        ingestService.admit(projectKey);
+        if (!IngestContentTypes.allowed(request.getContentType())) {
+            throw new ApiException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type");
+        }
         int maxBody = Math.max(properties.ingest().maxBodyBytes(), 1);
         int declared = request.getContentLength();
         if (declared > maxBody) {

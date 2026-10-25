@@ -12,6 +12,7 @@ import br.com.ricarte.hookguard.domain.WebhookEventRepository;
 import br.com.ricarte.hookguard.web.ApiException;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ReplayService {
 
-    static final int MAX_ATTEMPTS_PER_EVENT = 50;
+    static final int MAX_ATTEMPTS_PER_EVENT = 50;  // same budget the worker enforces when claiming
 
     private final WebhookEventRepository webhookEventRepository;
     private final ProjectRepository projectRepository;
@@ -43,13 +44,16 @@ public class ReplayService {
         if (reason == null || reason.isBlank() || reason.trim().length() > 500) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "replay_reason_invalid");
         }
-        WebhookEvent event = webhookEventRepository.findById(eventId)
+        WebhookEvent unlocked = webhookEventRepository.findById(eventId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "event_not_found"));
-        Project project = projectRepository.findById(event.getProjectId())
+        Project project = projectRepository.findById(unlocked.getProjectId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project_not_found"));
         if (!project.getAccountId().equals(accountId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "event_not_found");
         }
+        // Concurrent replays of one event queue up here; the partial unique index is the backstop.
+        WebhookEvent event = webhookEventRepository.findByIdForUpdate(eventId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "event_not_found"));
         if (!deliveryJobRepository.findOpenByEventId(event.getId()).isEmpty()) {
             throw new ApiException(HttpStatus.CONFLICT, "replay_already_queued");
         }
@@ -57,8 +61,6 @@ public class ReplayService {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "replay_limit");
         }
         Instant now = Instant.now();
-        event.setStatus(EventStatus.RECEIVED);
-        webhookEventRepository.save(event);
         DeliveryJob job = new DeliveryJob(
                 UUID.randomUUID(),
                 event.getId(),
@@ -69,7 +71,13 @@ public class ReplayService {
         job.setTriggerType("replay");
         job.setReplayActor(accountId);
         job.setReplayReason(reason.trim());
-        deliveryJobRepository.save(job);
+        try {
+            deliveryJobRepository.saveAndFlush(job);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ApiException(HttpStatus.CONFLICT, "replay_already_queued");
+        }
+        event.setStatus(EventStatus.RECEIVED);
+        webhookEventRepository.save(event);
         return job.getId();
     }
 }

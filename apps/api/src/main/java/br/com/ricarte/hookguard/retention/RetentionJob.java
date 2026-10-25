@@ -29,6 +29,10 @@ public class RetentionJob {
         Instant cutoff = Instant.now().minus(properties.retention().days(), ChronoUnit.DAYS);
         Instant now = Instant.now();
         int expiredDedupes = jdbcTemplate.update("DELETE FROM ingest_dedupes WHERE expires_at < ?", now);
+        jdbcTemplate.update(
+                "DELETE FROM ingest_rate_windows WHERE window_start < ?",
+                now.getEpochSecond() / 60 - 60
+        );
         int dedupes = jdbcTemplate.update(
                 "DELETE FROM ingest_dedupes WHERE event_id IN (SELECT id FROM events WHERE received_at < ?)",
                 cutoff

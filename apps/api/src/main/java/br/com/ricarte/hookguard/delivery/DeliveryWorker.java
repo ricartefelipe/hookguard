@@ -36,6 +36,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class DeliveryWorker {
 
     private static final Logger log = LoggerFactory.getLogger(DeliveryWorker.class);
+    private static final int SNIPPET_MAX_CHARS = 2000;
+    static final int MAX_ATTEMPTS_PER_EVENT = 50;
+    private static final long MIN_SEND_WINDOW_MS = 1000;
 
     private final DeliveryJobRepository deliveryJobRepository;
     private final WebhookEventRepository webhookEventRepository;
@@ -50,6 +53,10 @@ public class DeliveryWorker {
     private final AtomicBoolean lastClaimRanInTransaction = new AtomicBoolean();
     private final AtomicBoolean lastHttpRanInTransaction = new AtomicBoolean();
     private volatile Runnable beforeSettle = () -> {
+    };
+    private volatile Runnable beforeSend = () -> {
+    };
+    private volatile Runnable afterRenew = () -> {
     };
 
     public DeliveryWorker(
@@ -88,7 +95,13 @@ public class DeliveryWorker {
         lastClaimRanInTransaction.set(false);
         lastHttpRanInTransaction.set(false);
         reap();
-        for (DeliveryLease lease : claim()) {
+        // Each job is claimed right before it is sent, so no lease ages while it waits behind slower destinations.
+        int limit = Math.max(properties.worker().batchSize(), 1);
+        for (int sent = 0; sent < limit; sent++) {
+            DeliveryLease lease = claimNext();
+            if (lease == null) {
+                return;
+            }
             dispatch(lease);
         }
     }
@@ -99,6 +112,16 @@ public class DeliveryWorker {
 
     boolean lastHttpRanInTransaction() {
         return lastHttpRanInTransaction.get();
+    }
+
+    void setAfterRenew(Runnable afterRenew) {
+        this.afterRenew = afterRenew == null ? () -> {
+        } : afterRenew;
+    }
+
+    void setBeforeSend(Runnable beforeSend) {
+        this.beforeSend = beforeSend == null ? () -> {
+        } : beforeSend;
     }
 
     void setBeforeSettle(Runnable beforeSettle) {
@@ -127,12 +150,14 @@ public class DeliveryWorker {
                 }
             }
             for (StaleLease job : snapshot) {
+                webhookEventRepository.findByIdForUpdate(job.eventId());
                 Project project = projectRepository.findById(job.projectId()).orElse(null);
                 int maxAttempts = project == null ? 1 : project.getMaxAttempts();
                 boolean dead = project == null || job.attemptNumber() >= maxAttempts;
-                int updated = deliveryJobRepository.finishLease(
+                int updated = deliveryJobRepository.expireLease(
                         job.id(),
                         job.token(),
+                        staleBefore,
                         (dead ? JobState.DEAD : JobState.PENDING).toStorage(),
                         now
                 );
@@ -152,18 +177,25 @@ public class DeliveryWorker {
         });
     }
 
-    private List<DeliveryLease> claim() {
-        List<DeliveryLease> leases = shortTx.execute(status -> {
+    private DeliveryLease claimNext() {
+        return shortTx.execute(status -> {
             lastClaimRanInTransaction.set(TransactionSynchronizationManager.isActualTransactionActive());
-            return lockBatch(Instant.now());
+            return lockNext(Instant.now());
         });
-        return leases == null ? List.of() : leases;
     }
 
-    private List<DeliveryLease> lockBatch(Instant now) {
-        List<UUID> ids = deliveryJobRepository.claimCandidateIds(now, properties.worker().batchSize());
-        List<DeliveryLease> leases = new ArrayList<>();
-        for (UUID id : ids) {
+    /**
+     * Retires candidates that cannot run (missing data, paused project, attempt budget spent)
+     * and leases the first one that can. Only that job is locked as in progress.
+     */
+    private DeliveryLease lockNext(Instant now) {
+        // One candidate at a time: locking a whole batch of rows to lease only the first would starve other workers.
+        for (int examined = 0; examined < Math.max(properties.worker().batchSize(), 1); examined++) {
+            List<UUID> ids = deliveryJobRepository.claimCandidateIds(now, 1);
+            if (ids.isEmpty()) {
+                return null;
+            }
+            UUID id = ids.get(0);
             DeliveryJob job = deliveryJobRepository.findById(id).orElse(null);
             if (job == null || job.getState() != JobState.PENDING) {
                 continue;
@@ -185,17 +217,27 @@ public class DeliveryWorker {
                 deliveryJobRepository.save(job);
                 continue;
             }
+            if (deliveryAttemptRepository.countByEventId(event.getId()) >= MAX_ATTEMPTS_PER_EVENT) {
+                job.setState(JobState.DEAD);
+                job.clearLock();
+                deliveryJobRepository.save(job);
+                event.setStatus(EventStatus.DEAD);
+                webhookEventRepository.save(event);
+                log.warn("Attempt budget exhausted eventId={}", event.getId());
+                continue;
+            }
             int attemptNumber = job.getAttemptNumber() + 1;
             String token = workerId + ":" + UUID.randomUUID();
             job.lock(token, now);
             job.setAttemptNumber(attemptNumber);
             deliveryJobRepository.save(job);
             UUID attemptId = UUID.randomUUID();
-            deliveryAttemptRepository.save(new DeliveryAttempt(attemptId, event.getId(), attemptNumber, now));
+            int eventAttempt = deliveryAttemptRepository.maxAttemptNumber(event.getId()) + 1;
+            deliveryAttemptRepository.save(new DeliveryAttempt(attemptId, event.getId(), eventAttempt, now));
             event.setStatus(EventStatus.DELIVERING);
             webhookEventRepository.save(event);
             byte[] body = event.getBody() == null ? new byte[0] : event.getBody().clone();
-            leases.add(new DeliveryLease(
+            return new DeliveryLease(
                     job.getId(),
                     event.getId(),
                     attemptId,
@@ -210,25 +252,52 @@ public class DeliveryWorker {
                     project.getSigningSecret(),
                     project.getSigningSecretPrevious(),
                     project.getSigningSecretRotatedAt()
-            ));
+            );
         }
-        return leases;
+        return null;
     }
 
     private void dispatch(DeliveryLease lease) {
+        beforeSend.run();
+        if (!confirmOwnership(lease)) {
+            log.info("Lease lost before send eventId={}", lease.eventId());
+            meter("lease_lost");
+            return;
+        }
+        long renewedAt = System.nanoTime();
+        afterRenew.run();
         lastHttpRanInTransaction.set(TransactionSynchronizationManager.isActualTransactionActive());
         try {
+            Map<String, String> headers = buildHeaders(lease);
+            // Whatever time passed since the renewal comes out of the send budget; if too little is left, do not start.
+            long sinceRenewalMs = (System.nanoTime() - renewedAt) / 1_000_000L;
+            long remaining = leaseBudgetMs() - sinceRenewalMs;
+            if (remaining < MIN_SEND_WINDOW_MS) {
+                log.warn("Send skipped, lease margin used up before the request started eventId={}", lease.eventId());
+                meter("lease_margin");
+                return;
+            }
             DeliveryClient.DeliveryResult result = deliveryClient.post(
                     lease.destinationUrl(),
                     lease.body(),
                     lease.contentType(),
-                    buildHeaders(lease),
-                    effectiveTimeout(lease.timeoutMs())
+                    headers,
+                    (int) Math.min(effectiveTimeout(lease.timeoutMs()), remaining)
             );
             settle(lease, result);
         } catch (IllegalArgumentException ex) {
             settleDead(lease, ex.getMessage());
         }
+    }
+
+    /**
+     * Renews the lease only while this worker still holds it. The HTTP deadline is shorter than the
+     * lease timeout, so a send that starts after this check cannot outlive the lease it was authorised by.
+     */
+    private boolean confirmOwnership(DeliveryLease lease) {
+        Integer renewed = shortTx.execute(tx ->
+                deliveryJobRepository.renewLease(lease.jobId(), lease.claimToken(), Instant.now()));
+        return renewed != null && renewed == 1;
     }
 
     private Map<String, String> buildHeaders(DeliveryLease lease) {
@@ -269,7 +338,7 @@ public class DeliveryWorker {
         String error = success
                 ? null
                 : safe(result.errorMessage() != null ? result.errorMessage() : "http_" + result.httpStatus());
-        String snippet = clip(PayloadMasker.mask(result.responseBodySnippet()));
+        String snippet = PayloadMasker.maskResponse(result.responseBodySnippet(), SNIPPET_MAX_CHARS);
         apply(lease, state, status, Instant.now().plus(delay), result.httpStatus(), error, snippet);
         meter(success ? "success" : dead ? "dead" : "retry");
         if (!success && !dead) {
@@ -294,6 +363,8 @@ public class DeliveryWorker {
             String snippet
     ) {
         shortTx.executeWithoutResult(tx -> {
+            // Same lock order as replay and recovery: event row first, then the job.
+            webhookEventRepository.findByIdForUpdate(lease.eventId());
             int updated = deliveryJobRepository.finishLease(
                     lease.jobId(),
                     lease.claimToken(),
@@ -317,13 +388,14 @@ public class DeliveryWorker {
         });
     }
 
+    private long leaseBudgetMs() {
+        return Math.max(properties.worker().lockTimeoutSeconds() * 1000L - 5000L, MIN_SEND_WINDOW_MS);
+    }
+
     private int effectiveTimeout(int requested) {
-        int budget = properties.worker().lockTimeoutSeconds() * 1000 - 5000;
-        if (budget < 1000) {
-            budget = 1000;
-        }
+        long budget = leaseBudgetMs();
         int timeout = requested <= 0 ? properties.delivery().defaultTimeoutMs() : requested;
-        return Math.min(timeout, budget);
+        return (int) Math.min(timeout, budget);
     }
 
     private void meter(String result) {

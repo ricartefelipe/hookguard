@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-single-open-job
+      author: hookguard
+      comment: >
+        At most one open (pending or in_progress) delivery job per event. Earlier versions did not
+        enforce it, so duplicates are closed as dead (never deleted) before the index is created.
+      changes:
+        - sql:
+            sql: >
+              WITH ranked AS (
+                SELECT id,
+                       row_number() OVER (
+                         PARTITION BY event_id
+                         ORDER BY CASE state WHEN 'in_progress' THEN 0 ELSE 1 END, available_at, id
+                       ) AS position
+                FROM delivery_jobs
+                WHERE state IN ('pending', 'in_progress')
+              )
+              UPDATE delivery_jobs
+                 SET state = 'dead', locked_by = NULL, locked_at = NULL
+               WHERE id IN (SELECT id FROM ranked WHERE position > 1);
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_delivery_jobs_open_event
+              ON delivery_jobs (event_id)
+              WHERE state IN ('pending', 'in_progress');
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS uq_delivery_jobs_open_event;

@@ -89,7 +89,7 @@ public class EventQueryController {
         WebhookEvent event = loadOwned(accountId, eventId);
         Map<String, Object> body = summary(event);
         body.put("headersJson", OutboundHeaderPolicy.redactJson(event.getHeadersJson(), objectMapper));
-        body.put("bodyPreview", PayloadMasker.preview(event.getBody()));
+        body.put("bodyPreview", PayloadMasker.preview(event.getBody(), event.getContentType()));
         body.put("contentType", event.getContentType());
         body.put("dedupeKey", event.getDedupeKey());
         body.put("payloadFingerprint", event.getPayloadFingerprint());

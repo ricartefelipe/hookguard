@@ -9,6 +9,7 @@ import br.com.ricarte.hookguard.domain.Project;
 import br.com.ricarte.hookguard.domain.ProjectRepository;
 import br.com.ricarte.hookguard.domain.ProjectStatus;
 import br.com.ricarte.hookguard.ingest.IngestService;
+import br.com.ricarte.hookguard.ingest.SourceAuthVerifier;
 import br.com.ricarte.hookguard.web.ApiException;
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -177,12 +178,32 @@ public class ProjectService {
         if (project.getDedupeHeader() != null && !project.getDedupeHeader().isBlank()) {
             headers.put(project.getDedupeHeader(), "test-" + UUID.randomUUID());
         }
-        return ingestService.accept(
+        return ingestService.acceptFromOwner(
                 project.getProjectKey(),
                 headers,
                 "{\"hookguard\":\"test\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                 "application/json"
         );
+    }
+
+    @Transactional
+    public Project configureSourceAuth(UUID accountId, UUID projectId, String mode, String secret, Integer toleranceSeconds) {
+        Project project = getOwned(accountId, projectId);
+        SourceAuthVerifier.Mode parsed = SourceAuthVerifier.Mode.fromStorage(mode);
+        if (parsed == SourceAuthVerifier.Mode.NONE) {
+            project.configureSourceAuth(parsed.toStorage(), null, 300);
+            return projectRepository.save(project);
+        }
+        String trimmed = secret == null ? "" : secret.trim();
+        if (trimmed.length() < 8 || trimmed.length() > 200) {
+            throw new IllegalArgumentException("source secret must have between 8 and 200 characters");
+        }
+        int tolerance = toleranceSeconds == null ? 300 : toleranceSeconds;
+        if (tolerance < 30 || tolerance > 3600) {
+            throw new IllegalArgumentException("toleranceSeconds must be between 30 and 3600");
+        }
+        project.configureSourceAuth(parsed.toStorage(), trimmed, tolerance);
+        return projectRepository.save(project);
     }
 
     @Transactional

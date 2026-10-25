@@ -29,14 +29,17 @@ docs/      — especificação, plano e uso
 docker compose up -d
 cp .env.example .env
 
-cd apps/api && mvn spring-boot:run
+cd apps/api && HOOKGUARD_DELIVERY_ALLOW_HTTP=true HOOKGUARD_EXPOSE_MAGIC_LINK=true mvn spring-boot:run
 cd apps/web && npm install && npm run dev
 ```
+
+O `.env.example` traz valores seguros de produção (sem senha padrão, `ALLOW_HTTP=false`, link de login não exposto). Para desenvolver contra destinos locais, passe as duas variáveis acima na linha de comando, como no exemplo.
 
 - API: `http://localhost:8080`
 - Painel: `http://localhost:3000`
 - Mailpit: `http://localhost:8025`
-- Testes: `cd apps/api && mvn test` (use `HOOKGUARD_TEST_DB_URL` apontando para um Postgres descartável; a suíte apaga as tabelas de aplicação)
+- Testes: `cd apps/api && mvn test` (use `HOOKGUARD_TEST_DB_URL` apontando para um Postgres descartável; a suíte apaga as tabelas de aplicação e cria/remove bancos temporários `hg_tmp_*` ao lado dele, então o usuário precisa de `CREATEDB`)
+- Ensaios com processos reais, em containers descartáveis: `./scripts/backup-restore-drill.sh` e `./scripts/worker-crash-drill.sh`
 
 ## Demo gratuita (sem VPS/domínio)
 

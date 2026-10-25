@@ -39,6 +39,23 @@ Resposta esperada:
 {"eventId":"..."}
 ```
 
+### Autenticidade da origem
+
+A `projectKey` é uma credencial de capacidade: quem a conhece consegue enviar eventos. Para provar que o payload veio do provedor, configure o modo do projeto (`PUT /v1/projects/{id}/source-auth`, corpo `{"mode","secret","toleranceSeconds"}`; o segredo nunca é devolvido):
+
+| Modo | O que é verificado |
+| --- | --- |
+| `none` (padrão) | nada além da `projectKey`. **A origem não é verificada.** |
+| `stripe` | header `Stripe-Signature`: HMAC-SHA256 de `t.corpo` com o segredo do endpoint (`whsec_...`), tolerância de timestamp (padrão 300 s, 30–3600). A mesma assinatura repetida dentro da janela devolve o mesmo evento, sem novo evento nem uso. |
+| `github` | header `X-Hub-Signature-256` (`sha256=` + HMAC-SHA256 do corpo). O GitHub não envia timestamp: não há proteção contra repetição além do dedupe. |
+| `generic_hmac` | header `X-Signature-256`, mesmo formato. O emissor é quem define o segredo e responde por ele; não é validação de um provedor. |
+
+Só esses provedores são verificados nesta entrega; outro formato deve usar `none` ou `generic_hmac`. A verificação usa os bytes originais, ocorre antes de gravar ou contar o evento e responde `401 signature_missing`, `signature_invalid` ou `signature_expired`. Modo autenticado sem segredo utilizável responde `503 source_auth_misconfigured`, nunca aceita em silêncio. Cada projeto tem o seu segredo; a troca de segredo não tem janela de sobreposição. Este segredo é independente da assinatura de saída (`X-HookGuard-Signature`).
+
+### Limite de taxa
+
+`HOOKGUARD_INGEST_RATE_LIMIT` (padrão 120) é por projeto, em janela fixa de 60 s contada no Postgres, portanto vale somando todas as instâncias (na virada da janela é possível receber até o dobro em segundos). É checado antes de ler o corpo e conta também requisições rejeitadas. Excedido: `429 rate_limited` com `Retry-After`. Se o Postgres não responder: `503 rate_limiter_unavailable` (falha fechada). `HOOKGUARD_INGEST_MAX_CONCURRENT` (padrão 64) limita requisições de ingestão em andamento por instância (`503 ingest_busy`). Isso é diferente da cota mensal e do dedupe.
+
 ## 4. Validar entrega no seu app
 
 O HookGuard faz POST no destino com o body original, byte a byte, e apenas estes headers de origem: assinaturas e identificadores de provedor em allowlist (`Stripe-Signature`, `X-Hub-Signature-256`, headers Shopify/PayPal/Svix/Slack e equivalentes). `Authorization`, `Cookie`, `X-Api-Key` e headers `X-HookGuard-*` recebidos na ingestão não são armazenados nem encaminhados.
@@ -53,7 +70,7 @@ Headers da plataforma, sempre gerados na entrega:
 
 O HMAC-SHA256 usa o segredo do endpoint sobre os bytes `timestamp + "." + eventId + "." + body`. Durante `signature-rotation-hours` (padrão 24) o segredo anterior também assina. O segredo completo só aparece na criação ou na rotação.
 
-Seu endpoint deve responder `2xx` e ser idempotente pela `X-HookGuard-Event-Id`. `3xx` não é seguido. `408`, `429` e `5xx` geram retry; os demais `4xx` vão para `dead`. `Retry-After` atrasa a próxima tentativa, com teto de 6 horas, sem encurtar o backoff mínimo.
+Seu endpoint deve responder `2xx` e ser idempotente pela `X-HookGuard-Event-Id`. `3xx` não é seguido. Respostas informativas `1xx` são ignoradas até a resposta final (no máximo 8). Resposta truncada, `chunked` inválido ou cabeçalhos ambíguos contam como falha de rede, nunca como sucesso. O prazo de `timeoutMs` vale para a operação inteira (DNS, conexão, TLS, escrita e leitura), inclusive resposta em gotejamento. URLs IPv6 literais (`https://[2606:4700::1111]/`) são aceitas se públicas. `408`, `429` e `5xx` geram retry; os demais `4xx` vão para `dead`. `Retry-After` atrasa a próxima tentativa, com teto de 6 horas, sem encurtar o backoff mínimo.
 
 ## 5. Falhas, DLQ e replay
 
@@ -74,9 +91,9 @@ Seu endpoint deve responder `2xx` e ser idempotente pela `X-HookGuard-Event-Id`.
 
 No painel → Billing → Assinar Pro/Business (Stripe Checkout) ou abrir o portal do cliente.
 
-A cota free estourada responde `429` com `free_quota_exceeded`. Retry e replay não incrementam o uso: a contagem é por evento aceito. Overage de plano pago, quando `STRIPE_METER_EVENT_NAME` está definido, é reportado depois do commit, com identificador igual ao id do evento.
+A cota free estourada responde `429` com `free_quota_exceeded`. Retry e replay não incrementam o uso: a contagem é por evento aceito. Overage de plano pago, quando `STRIPE_METER_EVENT_NAME` está definido, é gravado num ledger (`usage_outbox`) na mesma transação que conta o evento e enviado ao Stripe por um processo à parte, com identificador igual ao id do evento. Detalhes e reconciliação em [`STRIPE.md`](STRIPE.md). `GET /v1/billing/usage-reports` mostra o estado.
 
-Retenção padrão: 14 dias (`hookguard.retention.days`). Corpo e headers ficam no Postgres da instalação. Não há criptografia por cliente nesta versão; o disco e o backup são responsabilidade de quem opera. A prévia no painel mascara campos como `password`, `token` e `api_key`. Credenciais de origem não entram no banco.
+Retenção padrão: 14 dias (`hookguard.retention.days`). Corpo e headers ficam no Postgres da instalação. Não há criptografia por cliente nesta versão; o disco e o backup são responsabilidade de quem opera. A prévia do corpo e o trecho de resposta do destino são mascarados antes de serem cortados: em JSON válido (e formulário `x-www-form-urlencoded`) todo valor — texto, número, lista ou objeto — de campos sensíveis (`password`, `token`, `secret`, `api_key`, `cvv`, `card`, `authorization` etc., inclusive nomes escritos com escapes) é ocultado. JSON inválido, truncado ou de outro tipo não é exibido cru: a prévia do corpo mostra um aviso de omissão. O trecho de resposta do destino só é guardado se for JSON (válido, ou com aparência de JSON cortado, que passa por um varredor tolerante); HTML, texto livre e XML são substituídos por um aviso de omissão, e linhas guardadas por versões anteriores que não sejam JSON são omitidas na exibição. Mesmo assim, nenhuma varredura garante a remoção de todo segredo em texto livre embutido em campos não sensíveis. Os bytes entregues e assinados não mudam. Credenciais de origem não entram no banco.
 
 Destinos: somente `https` em produção. `HOOKGUARD_DELIVERY_ALLOW_HTTP=true` existe para desenvolvimento e aceita loopback/rede privada, mas continua bloqueando link-local, metadata (`169.254.169.254`, `metadata.google.internal`) e URL com usuário/senha. A resolução usada na conexão é a mesma política; redirect não é seguido.
 

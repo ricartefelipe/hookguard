@@ -38,6 +38,36 @@ public interface DeliveryJobRepository extends JpaRepository<DeliveryJob, UUID> 
             @Param("availableAt") Instant availableAt
     );
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update DeliveryJob j
+               set j.state = :state,
+                   j.lockedBy = null,
+                   j.lockedAt = null,
+                   j.availableAt = :availableAt
+             where j.id = :id
+               and j.lockedBy = :token
+               and j.state = 'in_progress'
+               and j.lockedAt < :staleBefore
+            """)
+    int expireLease(
+            @Param("id") UUID id,
+            @Param("token") String token,
+            @Param("staleBefore") Instant staleBefore,
+            @Param("state") String state,
+            @Param("availableAt") Instant availableAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update DeliveryJob j
+               set j.lockedAt = :now
+             where j.id = :id
+               and j.lockedBy = :token
+               and j.state = 'in_progress'
+            """)
+    int renewLease(@Param("id") UUID id, @Param("token") String token, @Param("now") Instant now);
+
     @Query("""
             select j from DeliveryJob j
              where j.eventId = :eventId

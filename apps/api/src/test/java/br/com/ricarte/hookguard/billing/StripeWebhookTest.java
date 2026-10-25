@@ -87,7 +87,7 @@ class StripeWebhookTest {
                         ""
                 ),
                 new HookguardProperties.RateLimit(100),
-                new HookguardProperties.Ingest(2048, 24),
+                new HookguardProperties.Ingest(2048, 24, 64),
                 new HookguardProperties.Totalrecall("")
         );
     }

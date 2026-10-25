@@ -1,0 +1,49 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-source-auth-rate-limit
+      author: hookguard
+      changes:
+        - addColumn:
+            tableName: projects
+            columns:
+              - column:
+                  name: source_auth_mode
+                  type: varchar(20)
+                  defaultValue: none
+                  constraints: { nullable: false }
+              - column: { name: source_secret, type: varchar(200) }
+              - column:
+                  name: source_tolerance_seconds
+                  type: int
+                  defaultValueNumeric: 300
+                  constraints: { nullable: false }
+
+        - createTable:
+            tableName: ingest_rate_windows
+            columns:
+              - column: { name: project_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: window_start, type: bigint, constraints: { nullable: false } }
+              - column: { name: hits, type: int, constraints: { nullable: false } }
+        - addPrimaryKey:
+            tableName: ingest_rate_windows
+            columnNames: project_id, window_start
+            constraintName: pk_ingest_rate_windows
+        - addForeignKeyConstraint:
+            baseTableName: ingest_rate_windows
+            baseColumnNames: project_id
+            referencedTableName: projects
+            referencedColumnNames: id
+            constraintName: fk_rate_windows_project
+            onDelete: CASCADE
+      rollback:
+        - dropTable:
+            tableName: ingest_rate_windows
+        - dropColumn:
+            tableName: projects
+            columnName: source_tolerance_seconds
+        - dropColumn:
+            tableName: projects
+            columnName: source_secret
+        - dropColumn:
+            tableName: projects
+            columnName: source_auth_mode

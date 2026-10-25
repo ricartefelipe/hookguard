@@ -73,6 +73,22 @@ public class ProjectController {
         return toResponse(project, false);
     }
 
+    @PutMapping("/{projectId}/source-auth")
+    public Map<String, Object> sourceAuth(
+            @PathVariable UUID projectId,
+            @RequestBody SourceAuthRequest request
+    ) {
+        UUID accountId = AccountContext.requireAccountId();
+        Project project = projectService.configureSourceAuth(
+                accountId,
+                projectId,
+                request.mode(),
+                request.secret(),
+                request.toleranceSeconds()
+        );
+        return toResponse(project, false);
+    }
+
     @PostMapping("/{projectId}/rotate-key")
     public Map<String, Object> rotateKey(@PathVariable UUID projectId) {
         UUID accountId = AccountContext.requireAccountId();
@@ -122,6 +138,9 @@ public class ProjectController {
         body.put("dedupeHeader", project.getDedupeHeader());
         body.put("status", project.getStatus().toStorage());
         body.put("signingSecretHint", hint(project.getSigningSecret()));
+        body.put("sourceAuthMode", project.getSourceAuthMode());
+        body.put("sourceAuthConfigured", project.getSourceSecret() != null && !project.getSourceSecret().isBlank());
+        body.put("sourceToleranceSeconds", project.getSourceToleranceSeconds());
         body.put("createdAt", project.getCreatedAt().toString());
         if (includeSecrets) {
             body.put("projectKey", project.getProjectKey());
@@ -142,6 +161,13 @@ public class ProjectController {
             @NotBlank @Size(max = 200) String name,
             @NotBlank @Size(max = 2000) String destinationUrl,
             @Size(max = 120) String dedupeHeader
+    ) {
+    }
+
+    public record SourceAuthRequest(
+            @NotBlank String mode,
+            String secret,
+            Integer toleranceSeconds
     ) {
     }
 

@@ -7,6 +7,7 @@ import br.com.ricarte.hookguard.domain.AccountRepository;
 import br.com.ricarte.hookguard.domain.UsageMonthly;
 import br.com.ricarte.hookguard.domain.UsageMonthlyRepository;
 import br.com.ricarte.hookguard.web.ApiException;
+import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -14,8 +15,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class UsageService {
@@ -23,20 +22,20 @@ public class UsageService {
     private final UsageMonthlyRepository usageMonthlyRepository;
     private final AccountRepository accountRepository;
     private final HookguardProperties properties;
-    private final StripeUsageReporter stripeUsageReporter;
+    private final UsageOutbox usageOutbox;
     private final JdbcTemplate jdbcTemplate;
 
     public UsageService(
             UsageMonthlyRepository usageMonthlyRepository,
             AccountRepository accountRepository,
             HookguardProperties properties,
-            StripeUsageReporter stripeUsageReporter,
+            UsageOutbox usageOutbox,
             JdbcTemplate jdbcTemplate
     ) {
         this.usageMonthlyRepository = usageMonthlyRepository;
         this.accountRepository = accountRepository;
         this.properties = properties;
-        this.stripeUsageReporter = stripeUsageReporter;
+        this.usageOutbox = usageOutbox;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -65,17 +64,8 @@ public class UsageService {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "free_quota_exceeded");
         }
         if (account.getPlan() != AccountPlan.FREE && updated > included) {
-            String identifier = eventId.toString();
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        stripeUsageReporter.reportOverageEvent(account, identifier);
-                    }
-                });
-            } else {
-                stripeUsageReporter.reportOverageEvent(account, identifier);
-            }
+            // Same transaction as the count: a rollback drops the intent, a commit keeps it for the sender.
+            usageOutbox.enqueue(accountId, eventId, Instant.now());
         }
     }
 

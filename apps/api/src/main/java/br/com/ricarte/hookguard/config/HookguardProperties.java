@@ -26,7 +26,7 @@ public record HookguardProperties(
     ) {
     }
 
-    public record Ingest(int maxBodyBytes, int dedupeTtlHours) {
+    public record Ingest(int maxBodyBytes, int dedupeTtlHours, int maxConcurrentRequests) {
     }
 
     public record Retention(int days) {

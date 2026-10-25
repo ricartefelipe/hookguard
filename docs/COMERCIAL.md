@@ -10,7 +10,7 @@ Dor verificável no produto: o provedor não reenvia para sempre, o app de desti
 
 ## O que está incluído
 
-- Ingestão HTTP com `202` depois da persistência, limite de corpo, tipo e taxa por projeto.
+- Ingestão HTTP com `202` depois da persistência, limite de corpo, tipo e taxa por projeto (taxa compartilhada entre instâncias via Postgres). Verificação opcional da origem para Stripe, GitHub e HMAC genérico; o modo padrão `none` não verifica a origem.
 - Fila no Postgres, lease entre instâncias, retry, DLQ e replay com motivo, sem segunda cobrança de uso.
 - Assinatura própria da entrega e rotação de segredo com janela.
 - Allowlist de headers de provedor. Credencial de origem não segue para o destino.
@@ -18,7 +18,7 @@ Dor verificável no produto: o provedor não reenvia para sempre, o app de desti
 - Conta por magic link (uso único, com expiração) ou GitHub OAuth quando configurado. Sessão revogável.
 - Isolamento por conta em projeto, evento, replay e exclusão.
 - Painel para criar projeto, rotacionar chave e segredo, pausar, enviar evento de teste, ver tentativas mascaradas e replay.
-- Cota mensal por plano já codificada (free bloqueia; pro/business medem overage se o Stripe estiver configurado).
+- Cota mensal por plano já codificada (free bloqueia; pro/business registram o overage num ledger durável e o reportam ao Stripe, com reconciliação manual dos casos ambíguos; sem homologação em sandbox ainda).
 - Retenção configurável e expurgo. Backup é operacional, documentado em `docs/OPERACAO.md`.
 
 ## O que não está incluído
@@ -39,6 +39,6 @@ Demo curta, sem terceiro real: subir a stack local, criar projeto com destino em
 
 ## Quando chamar de comercialmente apto
 
-Piloto técnico: os testes da API passam no commit publicado, o restore foi lido de volta, e um destino controlado recebeu o evento com a assinatura nova. Isso não é homologação com Stripe live, GitHub OAuth de produção ou carga real. Esses três dependem de credencial do proprietário.
+Piloto técnico: os testes da API passam no commit publicado, o restore foi lido de volta (`scripts/backup-restore-drill.sh`), a recuperação após morte de worker foi exercitada (`scripts/worker-crash-drill.sh`) e um destino controlado recebeu o evento com a assinatura nova. Isso não é homologação com Stripe (sandbox ou live), GitHub OAuth de produção, CI remota ou carga real. Esses itens dependem de credencial ou de operação do proprietário.
 
 Não está apto a ser vendido como serviço público enquanto não houver licença, preço, responsável por suporte e um backup agendado fora desta sessão.
