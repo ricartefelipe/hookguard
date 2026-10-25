@@ -52,14 +52,6 @@ public class AccountAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             return authService.resolveAccountId(header.substring("Bearer ".length()).trim());
         }
-        String legacy = request.getHeader("X-Account-Id");
-        if (legacy != null && !legacy.isBlank()) {
-            try {
-                return Optional.of(UUID.fromString(legacy.trim()));
-            } catch (IllegalArgumentException ex) {
-                return Optional.empty();
-            }
-        }
         return Optional.empty();
     }
 

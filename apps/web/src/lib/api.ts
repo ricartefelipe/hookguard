@@ -22,6 +22,7 @@ export type ProjectSummary = {
   maxAttempts: number;
   dedupeHeader: string | null;
   status: string;
+  signingSecretHint?: string;
   createdAt: string;
   projectKey?: string;
   signingSecret?: string;
@@ -37,10 +38,10 @@ export type EventSummary = {
 
 export type EventDetail = EventSummary & {
   headersJson: string;
-  bodyBase64: string;
   bodyPreview: string;
   contentType: string | null;
   dedupeKey: string | null;
+  payloadFingerprint?: string | null;
   attempts: Array<{
     id: string;
     attemptNumber: number;
@@ -49,6 +50,13 @@ export type EventDetail = EventSummary & {
     httpStatus: number | null;
     errorMessage: string | null;
     responseBodySnippet: string | null;
+  }>;
+  jobs?: Array<{
+    id: string;
+    state: string;
+    triggerType: string;
+    attemptNumber: number;
+    replayReason: string | null;
   }>;
 };
 
@@ -183,6 +191,52 @@ export async function rotateProjectKey(
   return parse<ProjectSummary>(response);
 }
 
+export async function rotateSigningSecret(
+  sessionToken: string,
+  projectId: string
+): Promise<ProjectSummary> {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}/rotate-secret`, {
+    method: "POST",
+    headers: authHeaders(sessionToken),
+  });
+  return parse<ProjectSummary>(response);
+}
+
+export async function pauseProject(sessionToken: string, projectId: string): Promise<ProjectSummary> {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}/pause`, {
+    method: "POST",
+    headers: authHeaders(sessionToken),
+  });
+  return parse<ProjectSummary>(response);
+}
+
+export async function resumeProject(sessionToken: string, projectId: string): Promise<ProjectSummary> {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}/resume`, {
+    method: "POST",
+    headers: authHeaders(sessionToken),
+  });
+  return parse<ProjectSummary>(response);
+}
+
+export async function deleteProject(sessionToken: string, projectId: string): Promise<void> {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}`, {
+    method: "DELETE",
+    headers: authHeaders(sessionToken),
+  });
+  await parse(response);
+}
+
+export async function sendTestEvent(
+  sessionToken: string,
+  projectId: string
+): Promise<{ eventId: string }> {
+  const response = await fetch(`${resolveApiBase()}/v1/projects/${projectId}/test-event`, {
+    method: "POST",
+    headers: authHeaders(sessionToken),
+  });
+  return parse<{ eventId: string }>(response);
+}
+
 export async function listEvents(
   sessionToken: string,
   projectId: string,
@@ -209,11 +263,13 @@ export async function getEvent(sessionToken: string, eventId: string): Promise<E
 
 export async function replayEvent(
   sessionToken: string,
-  eventId: string
+  eventId: string,
+  reason: string
 ): Promise<{ jobId: string }> {
   const response = await fetch(`${resolveApiBase()}/v1/events/${eventId}/replay`, {
     method: "POST",
     headers: authHeaders(sessionToken),
+    body: JSON.stringify({ reason }),
   });
   return parse<{ jobId: string }>(response);
 }

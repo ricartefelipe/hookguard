@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hookguard
+          POSTGRES_USER: hookguard
+          POSTGRES_PASSWORD: hookguard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hookguard -d hookguard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Testar API
+        env:
+          HOOKGUARD_TEST_DB_URL: jdbc:postgresql://localhost:5432/hookguard
+          HOOKGUARD_TEST_DB_USER: hookguard
+          HOOKGUARD_TEST_DB_PASSWORD: hookguard
+        run: mvn -B -f apps/api/pom.xml test
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Build do painel
+        working-directory: apps/web
+        run: npm ci && npm run build

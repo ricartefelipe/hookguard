@@ -4,10 +4,12 @@ import br.com.ricarte.hookguard.domain.Project;
 import br.com.ricarte.hookguard.web.AccountContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -78,6 +80,38 @@ public class ProjectController {
         return toResponse(project, true);
     }
 
+    @PostMapping("/{projectId}/rotate-secret")
+    public Map<String, Object> rotateSecret(@PathVariable UUID projectId) {
+        UUID accountId = AccountContext.requireAccountId();
+        Project project = projectService.rotateSigningSecret(accountId, projectId);
+        return toResponse(project, true);
+    }
+
+    @PostMapping("/{projectId}/pause")
+    public Map<String, Object> pause(@PathVariable UUID projectId) {
+        UUID accountId = AccountContext.requireAccountId();
+        return toResponse(projectService.setPaused(accountId, projectId, true), false);
+    }
+
+    @PostMapping("/{projectId}/resume")
+    public Map<String, Object> resume(@PathVariable UUID projectId) {
+        UUID accountId = AccountContext.requireAccountId();
+        return toResponse(projectService.setPaused(accountId, projectId, false), false);
+    }
+
+    @PostMapping("/{projectId}/test-event")
+    public Map<String, String> testEvent(@PathVariable UUID projectId) {
+        UUID accountId = AccountContext.requireAccountId();
+        UUID eventId = projectService.sendTestEvent(accountId, projectId);
+        return Map.of("eventId", eventId.toString());
+    }
+
+    @DeleteMapping("/{projectId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID projectId) {
+        projectService.delete(AccountContext.requireAccountId(), projectId);
+    }
+
     private Map<String, Object> toResponse(Project project, boolean includeSecrets) {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("id", project.getId().toString());
@@ -87,6 +121,7 @@ public class ProjectController {
         body.put("maxAttempts", project.getMaxAttempts());
         body.put("dedupeHeader", project.getDedupeHeader());
         body.put("status", project.getStatus().toStorage());
+        body.put("signingSecretHint", hint(project.getSigningSecret()));
         body.put("createdAt", project.getCreatedAt().toString());
         if (includeSecrets) {
             body.put("projectKey", project.getProjectKey());
@@ -96,10 +131,17 @@ public class ProjectController {
         return body;
     }
 
+    private String hint(String secret) {
+        if (secret == null || secret.length() < 4) {
+            return "••••";
+        }
+        return "••••" + secret.substring(secret.length() - 4);
+    }
+
     public record CreateProjectRequest(
-            @NotBlank String name,
-            @NotBlank String destinationUrl,
-            String dedupeHeader
+            @NotBlank @Size(max = 200) String name,
+            @NotBlank @Size(max = 2000) String destinationUrl,
+            @Size(max = 120) String dedupeHeader
     ) {
     }
 

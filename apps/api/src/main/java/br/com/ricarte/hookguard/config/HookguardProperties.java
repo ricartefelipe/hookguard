@@ -10,12 +10,23 @@ public record HookguardProperties(
         Billing billing,
         Auth auth,
         RateLimit rateLimit,
+        Ingest ingest,
         Totalrecall totalrecall
 ) {
     public record Worker(boolean enabled, long pollIntervalMs, int batchSize, int lockTimeoutSeconds) {
     }
 
-    public record Delivery(int connectTimeoutMs, int defaultTimeoutMs, int maxAttempts) {
+    public record Delivery(
+            int connectTimeoutMs,
+            int defaultTimeoutMs,
+            int maxAttempts,
+            int maxResponseBytes,
+            int retryAfterCapSeconds,
+            int signatureRotationHours
+    ) {
+    }
+
+    public record Ingest(int maxBodyBytes, int dedupeTtlHours) {
     }
 
     public record Retention(int days) {
@@ -41,6 +52,7 @@ public record HookguardProperties(
             int sessionTtlDays,
             boolean exposeMagicLink,
             boolean trustForwardedHost,
+            String forwardedHostSuffix,
             String githubClientId,
             String githubClientSecret
     ) {

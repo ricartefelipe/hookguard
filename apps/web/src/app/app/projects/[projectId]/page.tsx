@@ -4,12 +4,17 @@ import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import {
+  deleteProject,
   getEvent,
   getProject,
   listEvents,
+  pauseProject,
   replayEvent,
   resolveApiBase,
+  resumeProject,
   rotateProjectKey,
+  rotateSigningSecret,
+  sendTestEvent,
   updateProject,
   type EventDetail,
   type EventSummary,
@@ -26,6 +31,8 @@ export default function ProjectDetailPage() {
   const [selected, setSelected] = useState<EventDetail | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [rotatedKey, setRotatedKey] = useState<string | null>(null);
+  const [rotatedSecret, setRotatedSecret] = useState<string | null>(null);
+  const [replayReason, setReplayReason] = useState("reprocessar");
   const [destinationUrl, setDestinationUrl] = useState("");
   const [timeoutMs, setTimeoutMs] = useState("10000");
   const [maxAttempts, setMaxAttempts] = useState("6");
@@ -76,8 +83,12 @@ export default function ProjectDetailPage() {
     if (!session) {
       return;
     }
+    if (!replayReason.trim()) {
+      setError("informe o motivo do replay");
+      return;
+    }
     try {
-      await replayEvent(session.sessionToken, eventId);
+      await replayEvent(session.sessionToken, eventId, replayReason.trim());
       await loadAll(session.sessionToken);
       await openEvent(eventId);
     } catch (err) {
@@ -96,6 +107,65 @@ export default function ProjectDetailPage() {
       setProject(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "erro_rotate");
+    }
+  }
+
+  async function onRotateSecret() {
+    const session = loadSession();
+    if (!session) {
+      return;
+    }
+    try {
+      const updated = await rotateSigningSecret(session.sessionToken, projectId);
+      setRotatedSecret(updated.signingSecret ?? null);
+      setProject(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "erro_rotate_secret");
+    }
+  }
+
+  async function onTogglePause() {
+    const session = loadSession();
+    if (!session || !project) {
+      return;
+    }
+    try {
+      const updated =
+        project.status === "paused"
+          ? await resumeProject(session.sessionToken, projectId)
+          : await pauseProject(session.sessionToken, projectId);
+      setProject(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "erro_pausa");
+    }
+  }
+
+  async function onTest() {
+    const session = loadSession();
+    if (!session) {
+      return;
+    }
+    try {
+      await sendTestEvent(session.sessionToken, projectId);
+      await loadAll(session.sessionToken);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "erro_teste");
+    }
+  }
+
+  async function onDelete() {
+    const session = loadSession();
+    if (!session) {
+      return;
+    }
+    if (!window.confirm("Excluir este projeto e os eventos retidos?")) {
+      return;
+    }
+    try {
+      await deleteProject(session.sessionToken, projectId);
+      router.push("/app");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "erro_excluir");
     }
   }
 
@@ -130,6 +200,10 @@ export default function ProjectDetailPage() {
             <div className="muted mono">
               Ingest: {apiBase}/v1/ingest/&lt;projectKey&gt;
             </div>
+            <div className="muted">
+              Status: <span className={`badge ${project.status}`}>{project.status}</span>
+              {project.signingSecretHint ? ` · segredo ${project.signingSecretHint}` : ""}
+            </div>
             {rotatedKey ? (
               <div className="mono">
                 Nova projectKey: <strong>{rotatedKey}</strong>
@@ -137,9 +211,30 @@ export default function ProjectDetailPage() {
             ) : (
               <div className="muted">A projectKey só aparece na criação ou ao rotacionar.</div>
             )}
+            {rotatedSecret ? (
+              <div className="mono">
+                Novo signingSecret (copie agora): <strong>{rotatedSecret}</strong>
+              </div>
+            ) : null}
             <div className="actions" style={{ marginTop: 0 }}>
               <button className="button-secondary" type="button" onClick={onRotate}>
                 Rotacionar projectKey
+              </button>
+              <button className="button-secondary" type="button" onClick={onRotateSecret}>
+                Rotacionar segredo
+              </button>
+              <button className="button-secondary" type="button" onClick={onTest}>
+                Enviar evento de teste
+              </button>
+              {project.status === "suspended" ? (
+                <span className="muted">Entrega suspensa por cobrança.</span>
+              ) : (
+                <button className="button-secondary" type="button" onClick={onTogglePause}>
+                  {project.status === "paused" ? "Retomar entrega" : "Pausar entrega"}
+                </button>
+              )}
+              <button className="button-secondary" type="button" onClick={onDelete}>
+                Excluir projeto
               </button>
             </div>
           </div>
@@ -203,8 +298,15 @@ export default function ProjectDetailPage() {
 
       <section className="grid-2" style={{ marginTop: "1rem" }}>
         <div className="panel">
-          <div className="actions" style={{ marginTop: 0, marginBottom: "1rem" }}>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <div className="actions" style={{ marginTop: 0, marginBottom: "1rem" }}>
+            <label htmlFor="status-filter" className="muted">
+              Status
+            </label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
               <option value="">Todos</option>
               <option value="received">received</option>
               <option value="delivering">delivering</option>
@@ -245,6 +347,7 @@ export default function ProjectDetailPage() {
               </div>
               <div className="mono muted">{selected.id}</div>
               <pre className="code">{selected.bodyPreview || "(vazio)"}</pre>
+              <p className="muted">Prévia mascarada. O corpo entregue permanece byte a byte.</p>
               <div>
                 <strong>Tentativas</strong>
                 <ul>
@@ -255,6 +358,29 @@ export default function ProjectDetailPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+              {selected.jobs && selected.jobs.length > 0 ? (
+                <div>
+                  <strong>Entregas</strong>
+                  <ul>
+                    {selected.jobs.map((job) => (
+                      <li key={job.id} className="muted">
+                        {job.triggerType} · {job.state}
+                        {job.replayReason ? ` · ${job.replayReason}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="field">
+                <label htmlFor="replay-reason">Motivo do replay</label>
+                <input
+                  id="replay-reason"
+                  value={replayReason}
+                  onChange={(e) => setReplayReason(e.target.value)}
+                  maxLength={500}
+                  required
+                />
               </div>
               <button className="button" type="button" onClick={() => onReplay(selected.id)}>
                 Replay

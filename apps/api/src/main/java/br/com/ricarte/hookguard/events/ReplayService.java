@@ -1,5 +1,6 @@
 package br.com.ricarte.hookguard.events;
 
+import br.com.ricarte.hookguard.domain.DeliveryAttemptRepository;
 import br.com.ricarte.hookguard.domain.DeliveryJob;
 import br.com.ricarte.hookguard.domain.DeliveryJobRepository;
 import br.com.ricarte.hookguard.domain.EventStatus;
@@ -18,28 +19,42 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ReplayService {
 
+    static final int MAX_ATTEMPTS_PER_EVENT = 50;
+
     private final WebhookEventRepository webhookEventRepository;
     private final ProjectRepository projectRepository;
     private final DeliveryJobRepository deliveryJobRepository;
+    private final DeliveryAttemptRepository deliveryAttemptRepository;
 
     public ReplayService(
             WebhookEventRepository webhookEventRepository,
             ProjectRepository projectRepository,
-            DeliveryJobRepository deliveryJobRepository
+            DeliveryJobRepository deliveryJobRepository,
+            DeliveryAttemptRepository deliveryAttemptRepository
     ) {
         this.webhookEventRepository = webhookEventRepository;
         this.projectRepository = projectRepository;
         this.deliveryJobRepository = deliveryJobRepository;
+        this.deliveryAttemptRepository = deliveryAttemptRepository;
     }
 
     @Transactional
-    public UUID replay(UUID accountId, UUID eventId) {
+    public UUID replay(UUID accountId, UUID eventId, String reason) {
+        if (reason == null || reason.isBlank() || reason.trim().length() > 500) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "replay_reason_invalid");
+        }
         WebhookEvent event = webhookEventRepository.findById(eventId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "event_not_found"));
         Project project = projectRepository.findById(event.getProjectId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project_not_found"));
         if (!project.getAccountId().equals(accountId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "event_not_found");
+        }
+        if (!deliveryJobRepository.findOpenByEventId(event.getId()).isEmpty()) {
+            throw new ApiException(HttpStatus.CONFLICT, "replay_already_queued");
+        }
+        if (deliveryAttemptRepository.findByEventIdOrderByAttemptNumberAsc(eventId).size() >= MAX_ATTEMPTS_PER_EVENT) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "replay_limit");
         }
         Instant now = Instant.now();
         event.setStatus(EventStatus.RECEIVED);
@@ -51,6 +66,9 @@ public class ReplayService {
                 now,
                 JobState.PENDING
         );
+        job.setTriggerType("replay");
+        job.setReplayActor(accountId);
+        job.setReplayReason(reason.trim());
         deliveryJobRepository.save(job);
         return job.getId();
     }

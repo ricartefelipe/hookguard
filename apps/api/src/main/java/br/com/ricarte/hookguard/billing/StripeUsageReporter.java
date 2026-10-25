@@ -28,7 +28,7 @@ public class StripeUsageReporter {
         this.properties = properties;
     }
 
-    public void reportOverageEvent(Account account) {
+    public void reportOverageEvent(Account account, String identifier) {
         String apiKey = properties.billing().stripeApiKey();
         String eventName = properties.billing().stripeMeterEventName();
         if (apiKey == null || apiKey.isBlank() || eventName == null || eventName.isBlank()) {
@@ -41,7 +41,9 @@ public class StripeUsageReporter {
             String body = "event_name=" + enc(eventName)
                     + "&payload[stripe_customer_id]=" + enc(account.getStripeCustomerId())
                     + "&payload[value]=1"
-                    + "&identifier=" + enc(UUID.randomUUID().toString());
+                    + "&identifier=" + enc(identifier == null || identifier.isBlank()
+                            ? UUID.randomUUID().toString()
+                            : identifier);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.stripe.com/v2/billing/meter_events"))
                     .timeout(Duration.ofSeconds(10))

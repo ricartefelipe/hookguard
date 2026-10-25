@@ -7,3 +7,5 @@ databaseChangeLog:
       file: db/changelog/changes/003-github-id.yaml
   - include:
       file: db/changelog/changes/004-totalrecall-password.yaml
+  - include:
+      file: db/changelog/changes/005-delivery-guarantees.yaml

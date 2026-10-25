@@ -1,7 +1,10 @@
 package br.com.ricarte.hookguard.events;
 
+import br.com.ricarte.hookguard.delivery.OutboundHeaderPolicy;
 import br.com.ricarte.hookguard.domain.DeliveryAttempt;
 import br.com.ricarte.hookguard.domain.DeliveryAttemptRepository;
+import br.com.ricarte.hookguard.domain.DeliveryJob;
+import br.com.ricarte.hookguard.domain.DeliveryJobRepository;
 import br.com.ricarte.hookguard.domain.EventStatus;
 import br.com.ricarte.hookguard.domain.Project;
 import br.com.ricarte.hookguard.domain.ProjectRepository;
@@ -9,8 +12,10 @@ import br.com.ricarte.hookguard.domain.WebhookEvent;
 import br.com.ricarte.hookguard.domain.WebhookEventRepository;
 import br.com.ricarte.hookguard.web.AccountContext;
 import br.com.ricarte.hookguard.web.ApiException;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +25,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,18 +37,24 @@ public class EventQueryController {
     private final WebhookEventRepository webhookEventRepository;
     private final ProjectRepository projectRepository;
     private final DeliveryAttemptRepository deliveryAttemptRepository;
+    private final DeliveryJobRepository deliveryJobRepository;
     private final ReplayService replayService;
+    private final ObjectMapper objectMapper;
 
     public EventQueryController(
             WebhookEventRepository webhookEventRepository,
             ProjectRepository projectRepository,
             DeliveryAttemptRepository deliveryAttemptRepository,
-            ReplayService replayService
+            DeliveryJobRepository deliveryJobRepository,
+            ReplayService replayService,
+            ObjectMapper objectMapper
     ) {
         this.webhookEventRepository = webhookEventRepository;
         this.projectRepository = projectRepository;
         this.deliveryAttemptRepository = deliveryAttemptRepository;
+        this.deliveryJobRepository = deliveryJobRepository;
         this.replayService = replayService;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping
@@ -52,11 +64,7 @@ public class EventQueryController {
             @RequestParam(defaultValue = "50") int limit
     ) {
         UUID accountId = AccountContext.requireAccountId();
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project_not_found"));
-        if (!project.getAccountId().equals(accountId)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "project_not_found");
-        }
+        ownedProject(accountId, projectId);
         int pageSize = Math.min(Math.max(limit, 1), 100);
         List<WebhookEvent> events;
         if (status == null || status.isBlank()) {
@@ -80,35 +88,40 @@ public class EventQueryController {
         UUID accountId = AccountContext.requireAccountId();
         WebhookEvent event = loadOwned(accountId, eventId);
         Map<String, Object> body = summary(event);
-        body.put("headersJson", event.getHeadersJson());
-        body.put("bodyBase64", Base64.getEncoder().encodeToString(event.getBody()));
-        body.put("bodyPreview", preview(event.getBody()));
+        body.put("headersJson", OutboundHeaderPolicy.redactJson(event.getHeadersJson(), objectMapper));
+        body.put("bodyPreview", PayloadMasker.preview(event.getBody()));
         body.put("contentType", event.getContentType());
         body.put("dedupeKey", event.getDedupeKey());
-        List<Map<String, Object>> attempts = deliveryAttemptRepository
-                .findByEventIdOrderByAttemptNumberAsc(eventId)
-                .stream()
+        body.put("payloadFingerprint", event.getPayloadFingerprint());
+        body.put("attempts", deliveryAttemptRepository.findByEventIdOrderByAttemptNumberAsc(eventId).stream()
                 .map(this::attemptView)
-                .toList();
-        body.put("attempts", attempts);
+                .toList());
+        body.put("jobs", deliveryJobRepository.findByEventIdOrderByAvailableAtAsc(eventId).stream()
+                .map(this::jobView)
+                .toList());
         return body;
     }
 
     @PostMapping("/{eventId}/replay")
-    public Map<String, String> replay(@PathVariable UUID eventId) {
+    public Map<String, String> replay(@PathVariable UUID eventId, @Valid @RequestBody ReplayRequest request) {
         UUID accountId = AccountContext.requireAccountId();
-        UUID jobId = replayService.replay(accountId, eventId);
+        UUID jobId = replayService.replay(accountId, eventId, request.reason());
         return Map.of("jobId", jobId.toString());
+    }
+
+    private Project ownedProject(UUID accountId, UUID projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "project_not_found"));
+        if (!project.getAccountId().equals(accountId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "project_not_found");
+        }
+        return project;
     }
 
     private WebhookEvent loadOwned(UUID accountId, UUID eventId) {
         WebhookEvent event = webhookEventRepository.findById(eventId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "event_not_found"));
-        Project project = projectRepository.findById(event.getProjectId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "event_not_found"));
-        if (!project.getAccountId().equals(accountId)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "event_not_found");
-        }
+        ownedProject(accountId, event.getProjectId());
         return event;
     }
 
@@ -129,15 +142,22 @@ public class EventQueryController {
         body.put("finishedAt", attempt.getFinishedAt() == null ? null : attempt.getFinishedAt().toString());
         body.put("httpStatus", attempt.getHttpStatus());
         body.put("errorMessage", attempt.getErrorMessage());
-        body.put("responseBodySnippet", attempt.getResponseBodySnippet());
+        body.put("responseBodySnippet", PayloadMasker.mask(attempt.getResponseBodySnippet()));
         return body;
     }
 
-    private String preview(byte[] body) {
-        if (body == null || body.length == 0) {
-            return "";
-        }
-        int len = Math.min(body.length, 500);
-        return new String(body, 0, len, StandardCharsets.UTF_8);
+    private Map<String, Object> jobView(DeliveryJob job) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", job.getId().toString());
+        body.put("state", job.getState().toStorage());
+        body.put("triggerType", job.getTriggerType());
+        body.put("attemptNumber", job.getAttemptNumber());
+        body.put("replayReason", job.getReplayReason());
+        return body;
+    }
+
+    public record ReplayRequest(
+            @NotBlank @Size(max = 500) String reason
+    ) {
     }
 }

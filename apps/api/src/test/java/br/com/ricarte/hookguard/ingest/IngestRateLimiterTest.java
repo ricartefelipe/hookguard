@@ -14,7 +14,7 @@ class IngestRateLimiterTest {
     void blocksWhenLimitExceeded() {
         HookguardProperties properties = new HookguardProperties(
                 new HookguardProperties.Worker(false, 1000, 10, 30),
-                new HookguardProperties.Delivery(1000, 1000, 6),
+                new HookguardProperties.Delivery(1000, 1000, 6, 65536, 21600, 24),
                 new HookguardProperties.Retention(14),
                 new HookguardProperties.Billing(5, 100, 1000, "", "", "", "", ""),
                 new HookguardProperties.Auth(
@@ -26,9 +26,11 @@ class IngestRateLimiterTest {
                         true,
                         false,
                         "",
+                        "",
                         ""
                 ),
                 new HookguardProperties.RateLimit(2),
+                new HookguardProperties.Ingest(2048, 24),
                 new HookguardProperties.Totalrecall("")
         );
         IngestRateLimiter limiter = new IngestRateLimiter(properties);

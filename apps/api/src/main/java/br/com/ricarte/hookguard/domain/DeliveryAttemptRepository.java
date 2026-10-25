@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface DeliveryAttemptRepository extends JpaRepository<DeliveryAttempt, UUID> {
     List<DeliveryAttempt> findByEventIdOrderByAttemptNumberAsc(UUID eventId);
+
+    List<DeliveryAttempt> findByEventIdAndFinishedAtIsNull(UUID eventId);
 }

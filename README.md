@@ -2,9 +2,9 @@
 
 Confiabilidade de webhooks para times que não querem operar mensageria só para receber eventos.
 
-Cole a URL de ingest no provedor, aponte o destino para o seu app. O HookGuard registra o evento, entrega com retry, move para DLQ quando esgota tentativas e permite replay manual.
+Cole a URL de ingest no provedor, aponte o destino para o seu app. O HookGuard persiste o evento, entrega com retry e semântica **at-least-once**, move para DLQ quando esgota tentativas e permite replay manual. O destino precisa deduplicar efeitos pela `X-HookGuard-Event-Id`: timeout do cliente não prova que o destino não processou, e o produto não promete exactly-once remoto.
 
-Guia de uso: [`docs/USAGE.md`](docs/USAGE.md)
+Guia de uso: [`docs/USAGE.md`](docs/USAGE.md). Operação e restauração: [`docs/OPERACAO.md`](docs/OPERACAO.md). Condição comercial: [`docs/COMERCIAL.md`](docs/COMERCIAL.md).
 
 ## Stack
 
@@ -36,7 +36,7 @@ cd apps/web && npm install && npm run dev
 - API: `http://localhost:8080`
 - Painel: `http://localhost:3000`
 - Mailpit: `http://localhost:8025`
-- Testes: `cd apps/api && mvn test`
+- Testes: `cd apps/api && mvn test` (use `HOOKGUARD_TEST_DB_URL` apontando para um Postgres descartável; a suíte apaga as tabelas de aplicação)
 
 ## Demo gratuita (sem VPS/domínio)
 

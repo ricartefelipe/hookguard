@@ -16,6 +16,8 @@ hookguard:
     lock-timeout-seconds: 30
   delivery:
     allow-http: true
+  ingest:
+    max-body-bytes: 2048
   rate-limit:
     ingest-per-minute: 1000
   billing:

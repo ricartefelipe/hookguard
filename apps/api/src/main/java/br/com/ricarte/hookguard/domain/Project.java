@@ -38,6 +38,12 @@ public class Project {
     @Column(name = "signing_secret", nullable = false, length = 120)
     private String signingSecret;
 
+    @Column(name = "signing_secret_previous", length = 120)
+    private String signingSecretPrevious;
+
+    @Column(name = "signing_secret_rotated_at")
+    private Instant signingSecretRotatedAt;
+
     @Column(nullable = false, length = 40)
     private String status;
 
@@ -127,6 +133,26 @@ public class Project {
 
     public String getSigningSecret() {
         return signingSecret;
+    }
+
+    public void setSigningSecret(String signingSecret) {
+        this.signingSecret = signingSecret;
+    }
+
+    public String getSigningSecretPrevious() {
+        return signingSecretPrevious;
+    }
+
+    public void setSigningSecretPrevious(String signingSecretPrevious) {
+        this.signingSecretPrevious = signingSecretPrevious;
+    }
+
+    public Instant getSigningSecretRotatedAt() {
+        return signingSecretRotatedAt;
+    }
+
+    public void setSigningSecretRotatedAt(Instant signingSecretRotatedAt) {
+        this.signingSecretRotatedAt = signingSecretRotatedAt;
     }
 
     public ProjectStatus getStatus() {
