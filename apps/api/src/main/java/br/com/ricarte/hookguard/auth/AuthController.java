@@ -65,23 +65,45 @@ public class AuthController {
     }
 
     @GetMapping("/github")
-    public void githubStart(HttpServletResponse response) throws IOException {
-        response.sendRedirect(gitHubOAuthService.authorizeUrl());
+    public void githubStart(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        String nonce = gitHubOAuthService.newNonce();
+        response.addHeader("Set-Cookie", stateCookie(nonce, 600, request));
+        response.sendRedirect(gitHubOAuthService.authorizeUrl(nonce));
+    }
+
+    private static String stateCookie(String value, int maxAgeSeconds, HttpServletRequest request) {
+        return "hg_oauth_state=" + value + "; Path=/v1/auth/github; Max-Age=" + maxAgeSeconds
+                + "; HttpOnly; SameSite=Lax" + (request.isSecure() ? "; Secure" : "");
+    }
+
+    private static String cookie(HttpServletRequest request, String name) {
+        if (request.getCookies() == null) {
+            return null;
+        }
+        for (jakarta.servlet.http.Cookie candidate : request.getCookies()) {
+            if (candidate.getName().equals(name)) {
+                return candidate.getValue();
+            }
+        }
+        return null;
     }
 
     @GetMapping("/github/callback")
     public void githubCallback(
             @RequestParam(required = false) String code,
+            @RequestParam(required = false) String state,
             @RequestParam(required = false) String error,
             HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
         String appBase = PublicBaseUrl.resolve(request, properties);
+        String nonce = cookie(request, "hg_oauth_state");
+        response.addHeader("Set-Cookie", stateCookie("", 0, request));
         if (error != null && !error.isBlank()) {
             response.sendRedirect(appBase + "/?error=" + enc(error));
             return;
         }
-        Map<String, Object> session = gitHubOAuthService.handleCallback(code);
+        Map<String, Object> session = gitHubOAuthService.handleCallback(code, state, nonce);
         String token = String.valueOf(session.get("sessionToken"));
         response.sendRedirect(appBase + "/auth/callback?sessionToken=" + enc(token));
     }

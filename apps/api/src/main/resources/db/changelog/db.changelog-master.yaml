@@ -7,3 +7,13 @@ databaseChangeLog:
       file: db/changelog/changes/003-github-id.yaml
   - include:
       file: db/changelog/changes/004-totalrecall-password.yaml
+  - include:
+      file: db/changelog/changes/005-delivery-guarantees.yaml
+  - include:
+      file: db/changelog/changes/006-single-open-job.yaml
+  - include:
+      file: db/changelog/changes/007-dedupe-backfill.yaml
+  - include:
+      file: db/changelog/changes/008-source-auth-rate-limit.yaml
+  - include:
+      file: db/changelog/changes/009-usage-outbox.yaml

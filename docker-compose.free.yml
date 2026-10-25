@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
     environment:
       POSTGRES_DB: hookguard
       POSTGRES_USER: hookguard
@@ -14,7 +14,7 @@ services:
       retries: 10
 
   mailpit:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:latest@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
     ports:
       - "18025:8025"
 
@@ -32,9 +32,10 @@ services:
       HOOKGUARD_CORS_ORIGINS: http://localhost:9080
       HOOKGUARD_APP_BASE_URL: http://localhost:9080
       HOOKGUARD_API_BASE_URL: http://localhost:9080
-      HOOKGUARD_DELIVERY_ALLOW_HTTP: "true"
+      HOOKGUARD_DELIVERY_ALLOW_HTTP: "false"
       HOOKGUARD_EXPOSE_MAGIC_LINK: "true"
       HOOKGUARD_TRUST_FORWARDED_HOST: "true"
+      HOOKGUARD_FORWARDED_HOST_SUFFIX: trycloudflare.com
       HOOKGUARD_SMTP_HOST: mailpit
       HOOKGUARD_SMTP_PORT: "1025"
       HOOKGUARD_SMTP_AUTH: "false"
@@ -60,7 +61,7 @@ services:
       - api
 
   caddy:
-    image: caddy:2.9-alpine
+    image: caddy:2.11-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
     ports:
       - "9080:80"
     volumes:
@@ -70,7 +71,7 @@ services:
       - web
 
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:latest@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39
     command: tunnel --no-autoupdate --url http://caddy:80
     depends_on:
       - caddy

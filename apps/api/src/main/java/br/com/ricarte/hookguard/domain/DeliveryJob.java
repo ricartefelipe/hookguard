@@ -35,6 +35,15 @@ public class DeliveryJob {
     @Column(name = "attempt_number", nullable = false)
     private int attemptNumber;
 
+    @Column(name = "trigger_type", nullable = false, length = 20)
+    private String triggerType;
+
+    @Column(name = "replay_actor")
+    private UUID replayActor;
+
+    @Column(name = "replay_reason", length = 500)
+    private String replayReason;
+
     protected DeliveryJob() {
     }
 
@@ -45,6 +54,7 @@ public class DeliveryJob {
         this.availableAt = availableAt;
         this.state = state.toStorage();
         this.attemptNumber = 0;
+        this.triggerType = "ingest";
     }
 
     public UUID getId() {
@@ -100,5 +110,29 @@ public class DeliveryJob {
     public void clearLock() {
         this.lockedBy = null;
         this.lockedAt = null;
+    }
+
+    public String getTriggerType() {
+        return triggerType;
+    }
+
+    public void setTriggerType(String triggerType) {
+        this.triggerType = triggerType;
+    }
+
+    public UUID getReplayActor() {
+        return replayActor;
+    }
+
+    public void setReplayActor(UUID replayActor) {
+        this.replayActor = replayActor;
+    }
+
+    public String getReplayReason() {
+        return replayReason;
+    }
+
+    public void setReplayReason(String replayReason) {
+        this.replayReason = replayReason;
     }
 }

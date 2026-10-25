@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-usage-outbox
+      author: hookguard
+      changes:
+        - createTable:
+            tableName: usage_outbox
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: account_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: event_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: identifier, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: occurred_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: state, type: varchar(20), defaultValue: pending, constraints: { nullable: false } }
+              - column: { name: attempts, type: int, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: ambiguous, type: boolean, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: next_attempt_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: first_attempt_at, type: timestamptz }
+              - column: { name: last_attempt_at, type: timestamptz }
+              - column: { name: locked_by, type: varchar(120) }
+              - column: { name: locked_at, type: timestamptz }
+              - column: { name: last_http_status, type: int }
+              - column: { name: last_error, type: varchar(500) }
+              - column: { name: sent_at, type: timestamptz }
+              - column: { name: created_at, type: timestamptz, constraints: { nullable: false } }
+        - addForeignKeyConstraint:
+            baseTableName: usage_outbox
+            baseColumnNames: account_id
+            referencedTableName: accounts
+            referencedColumnNames: id
+            constraintName: fk_usage_outbox_account
+        - addUniqueConstraint:
+            tableName: usage_outbox
+            columnNames: event_id
+            constraintName: uq_usage_outbox_event
+        - createIndex:
+            tableName: usage_outbox
+            indexName: idx_usage_outbox_due
+            columns:
+              - column: { name: state }
+              - column: { name: next_attempt_at }
+      rollback:
+        - dropTable:
+            tableName: usage_outbox

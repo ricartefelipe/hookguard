@@ -3,6 +3,7 @@ package br.com.ricarte.hookguard.delivery;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 class BackoffPolicyTest {
@@ -15,5 +16,21 @@ class BackoffPolicyTest {
         assertThat(BackoffPolicy.delayAfterAttempt(4)).isEqualTo(Duration.ofHours(1));
         assertThat(BackoffPolicy.delayAfterAttempt(5)).isEqualTo(Duration.ofHours(6));
         assertThat(BackoffPolicy.delayAfterAttempt(99)).isEqualTo(Duration.ofHours(6));
+    }
+
+    @Test
+    void capsRetryAfterAndDoesNotRetryEarlierThanTheServerAsked() {
+        Random zeroJitter = new Random() {
+            @Override
+            public double nextDouble() {
+                return 0.5d;
+            }
+        };
+        assertThat(BackoffPolicy.scheduleDelay(1, null, Duration.ofHours(6), zeroJitter))
+                .isEqualTo(Duration.ofSeconds(30));
+        assertThat(BackoffPolicy.scheduleDelay(1, Duration.ofSeconds(90), Duration.ofHours(6), zeroJitter))
+                .isEqualTo(Duration.ofSeconds(90));
+        assertThat(BackoffPolicy.scheduleDelay(1, Duration.ofDays(2), Duration.ofHours(6), zeroJitter))
+                .isEqualTo(Duration.ofHours(6));
     }
 }

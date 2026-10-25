@@ -25,17 +25,20 @@ public class BillingController {
     private final UsageService usageService;
     private final BillingService billingService;
     private final HookguardProperties properties;
+    private final UsageOutbox usageOutbox;
 
     public BillingController(
             AccountRepository accountRepository,
             UsageService usageService,
             BillingService billingService,
-            HookguardProperties properties
+            HookguardProperties properties,
+            UsageOutbox usageOutbox
     ) {
         this.accountRepository = accountRepository;
         this.usageService = usageService;
         this.billingService = billingService;
         this.properties = properties;
+        this.usageOutbox = usageOutbox;
     }
 
     @GetMapping("/usage")
@@ -53,6 +56,11 @@ public class BillingController {
         body.put("stripeConfigured", properties.billing().stripeApiKey() != null
                 && !properties.billing().stripeApiKey().isBlank());
         return body;
+    }
+
+    @GetMapping("/usage-reports")
+    public Map<String, Object> usageReports() {
+        return usageOutbox.summary(AccountContext.requireAccountId());
     }
 
     @PostMapping("/checkout")

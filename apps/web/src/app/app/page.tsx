@@ -14,6 +14,7 @@ export default function ProjectsPage() {
   const [destinationUrl, setDestinationUrl] = useState("");
   const [dedupeHeader, setDedupeHeader] = useState("X-Idempotency-Key");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -48,6 +49,7 @@ export default function ProjectsPage() {
         dedupeHeader: dedupeHeader.trim() || undefined,
       });
       setCreatedKey(project.projectKey ?? null);
+      setCreatedSecret(project.signingSecret ?? null);
       setName("");
       setDestinationUrl("");
       await refresh(session.sessionToken);
@@ -94,6 +96,11 @@ export default function ProjectsPage() {
           {createdKey ? (
             <p className="mono muted">
               projectKey (copie agora): <strong>{createdKey}</strong>
+            </p>
+          ) : null}
+          {createdSecret ? (
+            <p className="mono muted">
+              signingSecret (copie agora, não será mostrado de novo): <strong>{createdSecret}</strong>
             </p>
           ) : null}
           {error ? <p className="error">{error}</p> : null}

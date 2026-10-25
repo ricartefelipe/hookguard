@@ -74,7 +74,7 @@ chmod +x scripts/oracle-up.sh
 ./scripts/oracle-up.sh
 ```
 
-O script imprime a URL `https://….trycloudflare.com`. Magic link aparece na tela (`EXPOSE_MAGIC_LINK=true`).
+O script imprime a URL `https://….trycloudflare.com`. O login exige SMTP configurado no `.env`: por padrão o link **não** é exposto (`HOOKGUARD_EXPOSE_MAGIC_LINK=false`). Ativar `true` devolve o link e o token a qualquer chamador, o que permite entrar como qualquer e-mail; use somente em demonstração local isolada, nunca numa instância acessível pela internet.
 
 **Importante:** o build roda **na VM ARM**. Não copie JAR/imagem x86 do seu notebook.
 
@@ -83,7 +83,7 @@ O script imprime a URL `https://….trycloudflare.com`. Magic link aparece na te
 | Recurso | Ação |
 |---------|------|
 | Domínio | Registro.br / Cloudflare → DNS para o IP → `docker-compose.prod.yml` |
-| E-mail real | Resend/Brevo free → SMTP no `.env`, `EXPOSE_MAGIC_LINK=false` |
+| E-mail real | Resend/Brevo free → SMTP no `.env` (mantenha `EXPOSE_MAGIC_LINK=false`) |
 | Stripe | Conta + prices → variáveis Stripe |
 | Túnel estável | Cloudflare named tunnel (URL fixa) em vez do quick tunnel |
 

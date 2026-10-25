@@ -1,0 +1,146 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master, develop, "feature/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hookguard
+          POSTGRES_USER: hookguard
+          POSTGRES_PASSWORD: hookguard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hookguard -d hookguard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Testar API
+        env:
+          HOOKGUARD_TEST_DB_URL: jdbc:postgresql://localhost:5432/hookguard
+          HOOKGUARD_TEST_DB_USER: hookguard
+          HOOKGUARD_TEST_DB_PASSWORD: hookguard
+        run: mvn -B -f apps/api/pom.xml test
+      - name: Relatorios de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-reports
+          path: apps/api/target/surefire-reports
+          if-no-files-found: ignore
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Build do painel
+        working-directory: apps/web
+        run: npm ci && npx tsc --noEmit && npm run build
+      - name: Auditoria de dependencias de producao (falha em critical)
+        working-directory: apps/web
+        run: npm audit --omit=dev --audit-level=critical
+      - name: Auditoria completa (informativa)
+        working-directory: apps/web
+        continue-on-error: true
+        run: npm audit --audit-level=high --json > npm-audit.json
+      - name: Relatorio da auditoria
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-npm-audit
+          path: apps/web/npm-audit.json
+          if-no-files-found: ignore
+
+  java-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: SBOM com dependencias transitivas
+        run: mvn -B -q -f apps/api/pom.xml -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom -DoutputFormat=json -DincludeTestScope=false
+      - name: Scan do SBOM (informativo ate o proprietario decidir sobre os achados sem correcao compativel)
+        continue-on-error: true
+        run: docker run --rm -v "$PWD/apps/api/target:/t:ro" aquasec/trivy:latest sbom --severity HIGH,CRITICAL --exit-code 1 --format json -o /t/trivy-sbom.json /t/bom.json
+      - name: SBOM e relatorio do scan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-sbom-scan
+          path: |
+            apps/api/target/bom.json
+            apps/api/target/trivy-sbom.json
+          if-no-files-found: ignore
+
+  deploy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose de producao recusa subir sem senha do banco
+        run: "! docker compose -f docker-compose.prod.yml config >/dev/null 2>&1"
+      - name: Compose de producao com valores minimos
+        env:
+          HOOKGUARD_DOMAIN: ci.invalid
+          HOOKGUARD_DB_PASSWORD: ci-only-not-a-secret
+          HOOKGUARD_SMTP_HOST: smtp.invalid
+          HOOKGUARD_FROM_EMAIL: noreply@ci.invalid
+        run: |
+          docker compose -f docker-compose.prod.yml config > /tmp/prod.yml
+          ! grep -q 'ALLOW_HTTP: "true"' /tmp/prod.yml
+          ! grep -qi 'PAUSE_BEFORE_SEND' /tmp/prod.yml
+      - name: Compose Oracle nao expoe o link de login por padrao
+        env:
+          HOOKGUARD_DB_PASSWORD: ci-only-not-a-secret
+        run: |
+          docker compose -f docker-compose.oracle.yml config > /tmp/oracle.yml
+          grep -q 'HOOKGUARD_EXPOSE_MAGIC_LINK: "false"' /tmp/oracle.yml
+          ! grep -q 'HOOKGUARD_EXPOSE_MAGIC_LINK: "true"' /tmp/oracle.yml
+          ! grep -q 'ALLOW_HTTP: "true"' /tmp/oracle.yml
+          grep -q '^HOOKGUARD_EXPOSE_MAGIC_LINK=false' env.oracle.example
+      - name: Caddyfiles validos e sem otimizador de imagens
+        run: |
+          for f in Caddyfile Caddyfile.free; do
+            grep -q '/_next/image\*' deploy/$f
+            docker run --rm -e HOOKGUARD_DOMAIN=ci.invalid -v "$PWD/deploy/$f:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile
+          done
+
+  drills:
+    runs-on: ubuntu-latest
+    needs: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Backup e restore
+        run: ./scripts/backup-restore-drill.sh
+      - name: Morte de worker e recuperacao
+        run: ./scripts/worker-crash-drill.sh

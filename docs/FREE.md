@@ -32,6 +32,8 @@ Mailpit opcional: `http://localhost:18025` (o magic link já aparece na tela).
 - O PC precisa ficar ligado enquanto o túnel estiver no ar
 - A URL do túnel muda a cada `restart` do serviço `tunnel`
 - Não é produção estável; serve para demo e testes com webhooks reais
+- A demo pública não entrega para HTTP nem para rede privada. O destino precisa ser `https` público
+- O magic link do túnel só usa host terminado em `trycloudflare.com`
 
 ## Quando tiver orçamento mínimo
 
