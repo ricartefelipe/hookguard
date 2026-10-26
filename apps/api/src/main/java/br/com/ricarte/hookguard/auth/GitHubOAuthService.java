@@ -8,6 +8,13 @@ import br.com.ricarte.hookguard.web.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,12 +41,25 @@ public class GitHubOAuthService {
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
+    private static final Duration STATE_TTL = Duration.ofMinutes(10);
+    private final SecureRandom secureRandom = new SecureRandom();
+    private final String authorizeBase;
+    private final String tokenUrl;
+    private final String apiBase;
+
+    @Autowired
     public GitHubOAuthService(
             HookguardProperties properties,
             AccountRepository accountRepository,
             AuthService authService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            @Value("${hookguard.auth.github-authorize-url:https://github.com/login/oauth/authorize}") String authorizeBase,
+            @Value("${hookguard.auth.github-token-url:https://github.com/login/oauth/access_token}") String tokenUrl,
+            @Value("${hookguard.auth.github-api-url:https://api.github.com}") String apiBase
     ) {
+        this.authorizeBase = authorizeBase;
+        this.tokenUrl = tokenUrl;
+        this.apiBase = apiBase;
         this.properties = properties;
         this.accountRepository = accountRepository;
         this.authService = authService;
@@ -52,26 +72,77 @@ public class GitHubOAuthService {
         return id != null && !id.isBlank() && secret != null && !secret.isBlank();
     }
 
-    public String authorizeUrl() {
+    /** A fresh browser-bound nonce; the same value goes into a cookie and, signed, into the OAuth state. */
+    public String newNonce() {
+        byte[] bytes = new byte[24];
+        secureRandom.nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
+    }
+
+    public String authorizeUrl(String nonce) {
         ensureConfigured();
         return UriComponentsBuilder
-                .fromUriString("https://github.com/login/oauth/authorize")
-                .queryParam("client_id", properties.auth().githubClientId())
-                .queryParam("redirect_uri", callbackUrl())
-                .queryParam("scope", "read:user user:email")
+                .fromUriString(authorizeBase)
+                .queryParam("client_id", enc(properties.auth().githubClientId()))
+                .queryParam("redirect_uri", enc(callbackUrl()))
+                .queryParam("scope", enc("read:user user:email"))
+                .queryParam("state", enc(signState(nonce, Instant.now().plus(STATE_TTL))))
                 .build(true)
                 .toUriString();
     }
 
+    String signState(String nonce, Instant expiresAt) {
+        String payload = nonce + "." + expiresAt.getEpochSecond();
+        return payload + "." + hmac(payload);
+    }
+
+    /** Accepts the callback only for the browser that started the flow, within the state lifetime. */
+    void verifyState(String state, String cookieNonce) {
+        if (state == null || cookieNonce == null || cookieNonce.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid_oauth_state");
+        }
+        String[] parts = state.split("\\.");
+        if (parts.length != 3) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid_oauth_state");
+        }
+        String payload = parts[0] + "." + parts[1];
+        boolean signatureOk = MessageDigest.isEqual(
+                hmac(payload).getBytes(StandardCharsets.UTF_8), parts[2].getBytes(StandardCharsets.UTF_8));
+        boolean cookieOk = MessageDigest.isEqual(
+                parts[0].getBytes(StandardCharsets.UTF_8), cookieNonce.getBytes(StandardCharsets.UTF_8));
+        long expires;
+        try {
+            expires = Long.parseLong(parts[1]);
+        } catch (NumberFormatException ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid_oauth_state");
+        }
+        if (!signatureOk || !cookieOk || Instant.now().getEpochSecond() > expires) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "invalid_oauth_state");
+        }
+    }
+
+    private String hmac(String payload) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(
+                    ("hookguard-github-state:" + properties.auth().githubClientSecret()).getBytes(StandardCharsets.UTF_8),
+                    "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception ex) {
+            throw new IllegalStateException("HMAC-SHA256 unavailable", ex);
+        }
+    }
+
     @Transactional
-    public Map<String, Object> handleCallback(String code) {
+    public Map<String, Object> handleCallback(String code, String state, String cookieNonce) {
         ensureConfigured();
+        verifyState(state, cookieNonce);
         if (code == null || code.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "missing_code");
         }
         try {
             String accessToken = exchangeCode(code);
-            JsonNode user = getJson("https://api.github.com/user", accessToken);
+            JsonNode user = getJson(apiBase + "/user", accessToken);
             String githubId = user.path("id").asText(null);
             String name = user.path("name").asText(user.path("login").asText("github-user"));
             String email = user.path("email").asText(null);
@@ -119,7 +190,7 @@ public class GitHubOAuthService {
                 + "&code=" + enc(code)
                 + "&redirect_uri=" + enc(callbackUrl());
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://github.com/login/oauth/access_token"))
+                .uri(URI.create(tokenUrl))
                 .timeout(Duration.ofSeconds(15))
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -135,7 +206,7 @@ public class GitHubOAuthService {
     }
 
     private String primaryEmail(String accessToken) throws Exception {
-        JsonNode emails = getJson("https://api.github.com/user/emails", accessToken);
+        JsonNode emails = getJson(apiBase + "/user/emails", accessToken);
         if (!emails.isArray()) {
             return null;
         }

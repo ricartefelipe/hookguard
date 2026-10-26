@@ -21,6 +21,7 @@ class SchemaMigrationTest extends PostgresIntegrationTest {
             assertThat(tableExists(connection, "delivery_jobs")).isTrue();
             assertThat(tableExists(connection, "accounts")).isTrue();
             assertThat(tableExists(connection, "projects")).isTrue();
+            assertThat(tableExists(connection, "ingest_dedupes")).isTrue();
         }
     }
 

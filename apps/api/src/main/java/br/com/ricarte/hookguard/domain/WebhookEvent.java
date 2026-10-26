@@ -32,6 +32,9 @@ public class WebhookEvent {
     @Column(name = "dedupe_key", length = 500)
     private String dedupeKey;
 
+    @Column(name = "payload_fingerprint", length = 64)
+    private String payloadFingerprint;
+
     @Column(nullable = false, length = 40)
     private String status;
 
@@ -84,6 +87,14 @@ public class WebhookEvent {
 
     public String getDedupeKey() {
         return dedupeKey;
+    }
+
+    public String getPayloadFingerprint() {
+        return payloadFingerprint;
+    }
+
+    public void setPayloadFingerprint(String payloadFingerprint) {
+        this.payloadFingerprint = payloadFingerprint;
     }
 
     public EventStatus getStatus() {

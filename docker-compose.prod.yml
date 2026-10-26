@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
     environment:
       POSTGRES_DB: ${HOOKGUARD_DB_NAME:-hookguard}
       POSTGRES_USER: ${HOOKGUARD_DB_USER:-hookguard}
@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2.9-alpine
+    image: caddy:2.11-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
     ports:
       - "80:80"
       - "443:443"

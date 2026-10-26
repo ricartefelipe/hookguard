@@ -1,0 +1,66 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-delivery-guarantees
+      author: hookguard
+      changes:
+        - addColumn:
+            tableName: projects
+            columns:
+              - column: { name: signing_secret_previous, type: varchar(120) }
+              - column: { name: signing_secret_rotated_at, type: timestamptz }
+
+        - addColumn:
+            tableName: events
+            columns:
+              - column: { name: payload_fingerprint, type: varchar(64) }
+
+        - addColumn:
+            tableName: delivery_jobs
+            columns:
+              - column:
+                  name: trigger_type
+                  type: varchar(20)
+                  defaultValue: ingest
+                  constraints: { nullable: false }
+              - column: { name: replay_actor, type: uuid }
+              - column: { name: replay_reason, type: varchar(500) }
+
+        - sql:
+            sql: DROP INDEX IF EXISTS uq_events_project_dedupe;
+
+        - createTable:
+            tableName: ingest_dedupes
+            columns:
+              - column: { name: project_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: dedupe_key, type: varchar(500), constraints: { nullable: false } }
+              - column: { name: event_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: fingerprint, type: varchar(64), constraints: { nullable: false } }
+              - column: { name: expires_at, type: timestamptz, constraints: { nullable: false } }
+        - addPrimaryKey:
+            tableName: ingest_dedupes
+            columnNames: project_id, dedupe_key
+            constraintName: pk_ingest_dedupes
+        - addForeignKeyConstraint:
+            baseTableName: ingest_dedupes
+            baseColumnNames: project_id
+            referencedTableName: projects
+            referencedColumnNames: id
+            constraintName: fk_ingest_dedupes_project
+        - addForeignKeyConstraint:
+            baseTableName: ingest_dedupes
+            baseColumnNames: event_id
+            referencedTableName: events
+            referencedColumnNames: id
+            constraintName: fk_ingest_dedupes_event
+        - createIndex:
+            tableName: ingest_dedupes
+            indexName: idx_ingest_dedupes_expires
+            columns:
+              - column: { name: expires_at }
+
+        - createIndex:
+            tableName: delivery_jobs
+            indexName: idx_jobs_lease
+            columns:
+              - column: { name: state }
+              - column: { name: locked_at }

@@ -1,6 +1,5 @@
 package br.com.ricarte.hookguard.auth;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -74,10 +73,28 @@ class AuthIntegrationTest extends PostgresIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email));
 
+        mockMvc.perform(post("/v1/auth/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"token":"%s"}
+                                """.formatted(token)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("invalid_token"));
+
+        mockMvc.perform(post("/v1/auth/logout").header("Authorization", "Bearer " + sessionToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/v1/auth/me").header("Authorization", "Bearer " + sessionToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void forgedAccountHeaderDoesNotAuthenticate() throws Exception {
         mockMvc.perform(get("/v1/auth/me"))
                 .andExpect(status().isUnauthorized());
-
-        assertThat(sessionToken).hasSizeGreaterThan(20);
+        mockMvc.perform(get("/v1/projects").header("X-Account-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/v1/projects").header("Authorization", "Bearer not-a-session"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

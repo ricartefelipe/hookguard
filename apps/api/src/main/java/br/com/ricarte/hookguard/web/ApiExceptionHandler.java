@@ -10,7 +10,11 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, String>> handle(ApiException ex) {
-        return ResponseEntity.status(ex.getStatus()).body(Map.of(
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(ex.getStatus());
+        if (ex.getRetryAfterSeconds() != null) {
+            response.header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()));
+        }
+        return response.body(Map.of(
                 "error", ex.getCode()
         ));
     }

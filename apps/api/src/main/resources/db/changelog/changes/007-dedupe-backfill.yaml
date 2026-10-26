@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-dedupe-backfill
+      author: hookguard
+      comment: >
+        Changeset 005 replaced the permanent per-project unique index on events.dedupe_key with the
+        TTL-based ingest_dedupes table, which started empty. This additive step carries the earlier
+        events that are still inside the dedupe window into ingest_dedupes (same project namespace,
+        fingerprint computed from the stored original bytes) and fills the missing event fingerprints.
+        Events older than the window follow the new contract: they are accepted again.
+        Runs as one transaction: it either completes or leaves nothing behind.
+      changes:
+        - sql:
+            sql: >
+              UPDATE events
+                 SET payload_fingerprint = encode(sha256(body), 'hex')
+               WHERE payload_fingerprint IS NULL;
+        - sql:
+            sql: >
+              INSERT INTO ingest_dedupes (project_id, dedupe_key, event_id, fingerprint, expires_at)
+              SELECT DISTINCT ON (e.project_id, e.dedupe_key)
+                     e.project_id, e.dedupe_key, e.id, e.payload_fingerprint,
+                     e.received_at + (${dedupeTtlHours} * interval '1 hour')
+                FROM events e
+               WHERE e.dedupe_key IS NOT NULL
+                 AND e.received_at + (${dedupeTtlHours} * interval '1 hour') > now()
+               ORDER BY e.project_id, e.dedupe_key, e.received_at DESC
+              ON CONFLICT (project_id, dedupe_key) DO NOTHING;
+      rollback:
+        - empty

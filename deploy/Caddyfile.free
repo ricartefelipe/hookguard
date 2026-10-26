@@ -5,12 +5,17 @@
 		reverse_proxy api:8080
 	}
 
-	handle /actuator/* {
+	handle /actuator/health* {
 		reverse_proxy api:8080
 	}
 
-	handle /internal/* {
+	handle /actuator/info* {
 		reverse_proxy api:8080
+	}
+
+	# The panel serves no optimised images; keep the Next.js image optimizer off the public hostname.
+	handle /_next/image* {
+		respond 404
 	}
 
 	handle {
