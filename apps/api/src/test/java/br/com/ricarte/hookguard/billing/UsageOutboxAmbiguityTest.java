@@ -20,6 +20,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +36,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class UsageOutboxAmbiguityTest extends PostgresIntegrationTest {
 
     static final class MutableClock extends Clock {
-        private final AtomicReference<Instant> now = new AtomicReference<>(Instant.now());
+        // PostgreSQL stores microseconds: a clock with nanoseconds would be rounded by the database and move
+        // the 23 h boundary relative to the in-memory instant. Start on a whole microsecond and only add whole durations.
+        private final AtomicReference<Instant> now = new AtomicReference<>(Instant.now().truncatedTo(ChronoUnit.MICROS));
 
         void advance(Duration by) {
             now.updateAndGet(i -> i.plus(by));
@@ -121,15 +125,28 @@ class UsageOutboxAmbiguityTest extends PostgresIntegrationTest {
 
     @Test
     void windowBoundaryIsExclusiveAtTwentyThreeHours() {
-        UUID atLimit = row("pending", true, UsageOutbox.AMBIGUOUS_RETRY_LIMIT, null);
+        Duration limit = UsageOutbox.AMBIGUOUS_RETRY_LIMIT;
+        UUID atLimit = row("pending", true, limit, null);
+        // the persisted instant is exactly the one the clock produced: no rounding moves the boundary
+        assertThat(storedFirstAttempt(atLimit)).isEqualTo(clock.instant().minus(limit));
         outbox.processDue(10);
         verify(reporter, never()).report(anyString(), anyString(), any());
         assertThat(col(atLimit, "state")).isEqualTo("review");
 
-        UUID justBefore = row("pending", true, UsageOutbox.AMBIGUOUS_RETRY_LIMIT.minusSeconds(1), null);
+        UUID afterLimit = row("pending", true, limit.plusNanos(1_000), null); // one microsecond past it
+        outbox.processDue(10);
+        verify(reporter, never()).report(anyString(), anyString(), any());
+        assertThat(col(afterLimit, "state")).isEqualTo("review");
+
+        UUID justBefore = row("pending", true, limit.minusNanos(1_000), null); // one microsecond short of it
+        assertThat(storedFirstAttempt(justBefore)).isEqualTo(clock.instant().minus(limit.minusNanos(1_000)));
         outbox.processDue(10);
         verify(reporter, times(1)).report(anyString(), anyString(), any());
         assertThat(col(justBefore, "state")).isEqualTo("sent");
+    }
+
+    private Instant storedFirstAttempt(UUID eventId) {
+        return jdbc.queryForObject("SELECT first_attempt_at FROM usage_outbox WHERE event_id = ?", Timestamp.class, eventId).toInstant();
     }
 
     @Test
@@ -142,11 +159,35 @@ class UsageOutboxAmbiguityTest extends PostgresIntegrationTest {
     }
 
     @Test
-    void rowThatCrossesTheLimitWhileWaitingForItsTurnIsNotSent() {
-        UUID first = row("pending", false, Duration.ofMinutes(1), null);
-        UUID waiting = row("pending", true, UsageOutbox.AMBIGUOUS_RETRY_LIMIT.minusMinutes(30), "IOException");
-        jdbc.update("UPDATE usage_outbox SET next_attempt_at = now() - interval '10 seconds' WHERE event_id = ?", first);
-        // the row claimed first takes "an hour" to be processed: when the second one's turn comes it is over the limit
+    void rowsReservedInsideTheWindowAreHeldIfTheClockCrossesTheLimitBeforeTheSend() {
+        // two reserved rows, both inside the window (22.5 h) when claimed; neither order of processing matters
+        UUID a = row("pending", true, UsageOutbox.AMBIGUOUS_RETRY_LIMIT.minusMinutes(30), "IOException");
+        UUID b = row("pending", true, UsageOutbox.AMBIGUOUS_RETRY_LIMIT.minusMinutes(30), "IOException");
+        AtomicReference<Integer> reservedWhenClockMoved = new AtomicReference<>();
+        // the hook runs after the claim and before the first send decision: the reservations exist, then time passes
+        outbox.setBeforeSend(() -> {
+            if (reservedWhenClockMoved.compareAndSet(null, jdbc.queryForObject(
+                    "SELECT count(*) FROM usage_outbox WHERE state = 'sending' AND locked_by LIKE 'reporter-%'", Integer.class))) {
+                clock.advance(Duration.ofHours(1));
+            }
+        });
+
+        assertThat(outbox.processDue(10)).isEqualTo(2);
+
+        assertThat(reservedWhenClockMoved.get()).isEqualTo(2);
+        verify(reporter, never()).report(anyString(), anyString(), any());
+        for (UUID id : new UUID[] {a, b}) {
+            assertThat(col(id, "state")).isEqualTo("review");
+            assertThat(col(id, "last_error")).startsWith("ambiguous_window_expired").contains("IOException");
+        }
+    }
+
+    @Test
+    void aRowThatWaitedBehindAnotherSendIsHeldWhenTheSendTookLongEnough() {
+        // two symmetric rows, so the result does not depend on which one the database returns first:
+        // whichever is sent first takes "an hour", and the other one is then over the limit
+        UUID a = row("pending", true, UsageOutbox.AMBIGUOUS_RETRY_LIMIT.minusMinutes(30), "IOException");
+        UUID b = row("pending", true, UsageOutbox.AMBIGUOUS_RETRY_LIMIT.minusMinutes(30), "IOException");
         when(reporter.report(anyString(), anyString(), any())).thenAnswer(call -> {
             clock.advance(Duration.ofHours(1));
             return new StripeUsageReporter.Outcome(StripeUsageReporter.Kind.SENT, 200, null);
@@ -155,9 +196,11 @@ class UsageOutboxAmbiguityTest extends PostgresIntegrationTest {
         assertThat(outbox.processDue(10)).isEqualTo(2);
 
         verify(reporter, times(1)).report(anyString(), anyString(), any());
-        assertThat(col(first, "state")).isEqualTo("sent");
-        assertThat(col(waiting, "state")).isEqualTo("review");
-        assertThat(col(waiting, "last_error")).startsWith("ambiguous_window_expired");
+        List<String> states = List.of(col(a, "state"), col(b, "state"));
+        assertThat(states).containsExactlyInAnyOrder("sent", "review");
+        UUID held = col(a, "state").equals("review") ? a : b;
+        assertThat(col(held, "last_error")).startsWith("ambiguous_window_expired");
+        verify(reporter, never()).report(anyString(), org.mockito.ArgumentMatchers.eq(held.toString()), any());
     }
 
     @Test
