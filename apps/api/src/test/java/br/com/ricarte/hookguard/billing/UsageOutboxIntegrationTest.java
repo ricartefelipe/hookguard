@@ -215,12 +215,14 @@ class UsageOutboxIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
-    void ambiguousAttemptOlderThanTheIdentifierWindowGoesToReviewInsteadOfResending() {
+    void ambiguousAttemptOlderThanTheIdentifierWindowIsNeverResent() {
         UUID eventId = ingestOne("old");
         jdbc.update("UPDATE usage_outbox SET state = 'pending', ambiguous = true, attempts = 3, first_attempt_at = now() - interval '24 hours', next_attempt_at = now() - interval '1 second'");
-        stripe.enqueue(new MockResponse().setResponseCode(503));
+        // a success response is queued on purpose: if the sender called Stripe, the row would end up "sent"
+        stripe.enqueue(new MockResponse().setResponseCode(200));
         outbox(2000).processDue(10);
         assertThat(state(eventId)).isEqualTo("review");
+        assertThat(stripe.getRequestCount()).isZero();
     }
 
     @Test

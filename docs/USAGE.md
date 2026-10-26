@@ -4,7 +4,7 @@
 
 1. Abra o painel.
 2. Peça um magic link por e-mail **ou** use GitHub (se configurado).
-3. Em local, o e-mail aparece no Mailpit (`http://localhost:8025`). Com `HOOKGUARD_EXPOSE_MAGIC_LINK=true`, o link também aparece na tela.
+3. Em local, o e-mail aparece no Mailpit (`http://localhost:8025`). Com `HOOKGUARD_EXPOSE_MAGIC_LINK=true` (somente desenvolvimento local, sem túnel nem rede pública), o link também aparece na resposta da API.
 
 ## 2. Criar projeto
 

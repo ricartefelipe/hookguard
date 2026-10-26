@@ -15,8 +15,9 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    # Caixa de e-mail local da demo: só no loopback do host. Não passa pelo Caddy nem pelo túnel.
     ports:
-      - "18025:8025"
+      - "127.0.0.1:18025:8025"
 
   api:
     build:
@@ -33,7 +34,8 @@ services:
       HOOKGUARD_APP_BASE_URL: http://localhost:9080
       HOOKGUARD_API_BASE_URL: http://localhost:9080
       HOOKGUARD_DELIVERY_ALLOW_HTTP: "false"
-      HOOKGUARD_EXPOSE_MAGIC_LINK: "true"
+      # Fixo: a demo tem túnel público, então o link de login nunca volta na resposta da API (ler no Mailpit).
+      HOOKGUARD_EXPOSE_MAGIC_LINK: "false"
       HOOKGUARD_TRUST_FORWARDED_HOST: "true"
       HOOKGUARD_FORWARDED_HOST_SUFFIX: trycloudflare.com
       HOOKGUARD_SMTP_HOST: mailpit

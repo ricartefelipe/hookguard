@@ -96,13 +96,11 @@ public class AuthService {
     public Map<String, Object> verifyMagicLink(String rawToken) {
         LoginToken loginToken = loginTokenRepository.findByTokenHash(TokenHasher.sha256(rawToken))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token"));
-        Instant now = Instant.now();
-        if (loginToken.getConsumedAt() != null || loginToken.getExpiresAt().isBefore(now)) {
+        // Consumption and session creation share this transaction: if the session cannot be created the
+        // consumption is rolled back with it. The conditional update is what makes the token single-use.
+        if (loginTokenRepository.consumeIfUsable(loginToken.getId(), Instant.now()) != 1) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token");
         }
-        loginToken.consume(now);
-        loginTokenRepository.save(loginToken);
-
         Account account = accountRepository.findById(loginToken.getAccountId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "invalid_token"));
         return createSessionForAccount(account);

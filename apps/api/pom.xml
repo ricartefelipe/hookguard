@@ -75,6 +75,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- stripe-java declares gson with runtime scope; tests build provider objects from JSON -->
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>mockwebserver</artifactId>
             <version>4.12.0</version>

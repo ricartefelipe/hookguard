@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-stripe-webhook-state
+      author: hookguard
+      changes:
+        - addColumn:
+            tableName: accounts
+            columns:
+              - column: { name: stripe_subscription_id, type: varchar(120) }
+              - column: { name: billing_synced_at, type: timestamptz }
+        - createTable:
+            tableName: stripe_events
+            columns:
+              - column: { name: event_id, type: varchar(255), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: event_type, type: varchar(120), constraints: { nullable: false } }
+              - column: { name: state, type: varchar(20), constraints: { nullable: false } }
+              - column: { name: attempts, type: int, defaultValueNumeric: 1, constraints: { nullable: false } }
+              - column: { name: claimed_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: received_at, type: timestamptz, constraints: { nullable: false } }
+              - column: { name: processed_at, type: timestamptz }
+              - column: { name: result, type: varchar(120) }
+      rollback:
+        - dropTable:
+            tableName: stripe_events
+        - dropColumn:
+            tableName: accounts
+            columnName: billing_synced_at
+        - dropColumn:
+            tableName: accounts
+            columnName: stripe_subscription_id

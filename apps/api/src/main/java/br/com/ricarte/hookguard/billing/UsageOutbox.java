@@ -3,6 +3,7 @@ package br.com.ricarte.hookguard.billing;
 import br.com.ricarte.hookguard.domain.Account;
 import br.com.ricarte.hookguard.domain.AccountRepository;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -37,11 +39,26 @@ public class UsageOutbox {
     private final JdbcTemplate jdbc;
     private final AccountRepository accountRepository;
     private final StripeUsageReporter reporter;
+    private final Clock clock;
+    private volatile Runnable beforeSend = () -> {
+    };
 
+    @Autowired
     public UsageOutbox(JdbcTemplate jdbc, AccountRepository accountRepository, StripeUsageReporter reporter) {
+        this(jdbc, accountRepository, reporter, Clock.systemUTC());
+    }
+
+    UsageOutbox(JdbcTemplate jdbc, AccountRepository accountRepository, StripeUsageReporter reporter, Clock clock) {
         this.jdbc = jdbc;
         this.accountRepository = accountRepository;
         this.reporter = reporter;
+        this.clock = clock;
+    }
+
+    /** Test hook: runs for each claimed row just before the send checks. */
+    void setBeforeSend(Runnable beforeSend) {
+        this.beforeSend = beforeSend == null ? () -> {
+        } : beforeSend;
     }
 
     /** Called inside the ingest transaction; idempotent per event. */
@@ -55,7 +72,7 @@ public class UsageOutbox {
     }
 
     private record Claimed(UUID id, UUID accountId, String identifier, Instant occurredAt, int attempts,
-                           Instant firstAttemptAt, boolean ambiguous) {
+                           Instant firstAttemptAt, boolean ambiguous, String previousError) {
     }
 
     /** Sends due rows; safe to run from several instances at once. Returns how many rows were handled. */
@@ -88,7 +105,7 @@ public class UsageOutbox {
                         ORDER BY next_attempt_at, id
                         FOR UPDATE SKIP LOCKED
                         LIMIT ?)
-                RETURNING id, account_id, identifier, occurred_at, attempts, first_attempt_at, ambiguous
+                RETURNING id, account_id, identifier, occurred_at, attempts, first_attempt_at, ambiguous, last_error
                 """,
                 (rs, n) -> new Claimed(
                         rs.getObject("id", UUID.class),
@@ -97,17 +114,13 @@ public class UsageOutbox {
                         rs.getTimestamp("occurred_at").toInstant(),
                         rs.getInt("attempts"),
                         rs.getTimestamp("first_attempt_at").toInstant(),
-                        rs.getBoolean("ambiguous")),
+                        rs.getBoolean("ambiguous"),
+                        rs.getString("last_error")),
                 token, LEASE.toSeconds(), limit);
     }
 
     private void handle(String token, Claimed row) {
-        Instant now = Instant.now();
-        if (row.occurredAt().isBefore(now.minus(MAX_AGE))) {
-            settle(token, row, "failed", Duration.ZERO, null, "timestamp_window_exceeded", row.ambiguous(), null);
-            log.error("Usage report expired before it could be sent identifier={}", row.identifier());
-            return;
-        }
+        beforeSend.run();
         Account account = accountRepository.findById(row.accountId()).orElse(null);
         if (account == null || account.getStripeCustomerId() == null || account.getStripeCustomerId().isBlank()) {
             // Nothing was sent, so the attempt does not count; look again later.
@@ -118,33 +131,80 @@ public class UsageOutbox {
                     """, row.id(), token);
             return;
         }
+        // Ownership and the send windows are checked at the moment of sending, not when the batch was claimed:
+        // earlier rows of the batch may have taken long enough for this reservation to go stale or cross a limit.
+        if (!confirmOwnership(token, row)) {
+            log.warn("Usage report not sent, lease lost before the send identifier={}", row.identifier());
+            return;
+        }
+        Instant now = clock.instant();
+        if (row.ambiguous() && !row.firstAttemptAt().plus(AMBIGUOUS_RETRY_LIMIT).isAfter(now)) {
+            holdWithoutSending(token, row, "ambiguous_window_expired", "review");
+            log.error("Usage report held for manual reconciliation, ambiguous window over identifier={}", row.identifier());
+            return;
+        }
+        if (row.occurredAt().isBefore(now.minus(MAX_AGE))) {
+            holdWithoutSending(token, row, "timestamp_window_exceeded", row.ambiguous() ? "review" : "failed");
+            log.error("Usage report expired before it could be sent identifier={}", row.identifier());
+            return;
+        }
         StripeUsageReporter.Outcome outcome = reporter.report(account.getStripeCustomerId(), row.identifier(), row.occurredAt());
         Duration retryIn = backoff(row.attempts());
+        String detail = outcome.detail() == null ? null : withHistory(outcome.detail(), row);
         switch (outcome.kind()) {
-            case SENT -> settle(token, row, "sent", Duration.ZERO, outcome.httpStatus(), null, row.ambiguous(), now);
+            case SENT -> settle(token, row, "sent", Duration.ZERO, outcome.httpStatus(), null, row.ambiguous(), clock.instant());
             case REJECTED -> {
                 // After an ambiguous attempt a refusal may just be Stripe reporting a duplicate identifier,
                 // which would mean the first attempt was recorded. Only a person can tell: keep it for review.
                 String state = row.ambiguous() ? "review" : "failed";
-                settle(token, row, state, Duration.ZERO, outcome.httpStatus(), outcome.detail(), row.ambiguous(), null);
+                settle(token, row, state, Duration.ZERO, outcome.httpStatus(), detail, row.ambiguous(), null);
                 log.error("Stripe refused usage report identifier={} status={} state={}", row.identifier(), outcome.httpStatus(), state);
             }
             case RETRY_LATER -> {
                 if (outcome.httpStatus() != null && outcome.httpStatus() != 429 && row.attempts() >= MAX_AUTH_ATTEMPTS) {
-                    settle(token, row, "failed", Duration.ZERO, outcome.httpStatus(), outcome.detail(), row.ambiguous(), null);
+                    settle(token, row, "failed", Duration.ZERO, outcome.httpStatus(), detail, row.ambiguous(), null);
                 } else {
-                    settle(token, row, "pending", retryIn, outcome.httpStatus(), outcome.detail(), row.ambiguous(), null);
+                    settle(token, row, "pending", retryIn, outcome.httpStatus(), detail, row.ambiguous(), null);
                 }
             }
             case AMBIGUOUS -> {
-                if (row.firstAttemptAt().plus(AMBIGUOUS_RETRY_LIMIT).isBefore(now)) {
-                    settle(token, row, "review", Duration.ZERO, outcome.httpStatus(), outcome.detail(), true, null);
+                if (!row.firstAttemptAt().plus(AMBIGUOUS_RETRY_LIMIT).isAfter(clock.instant())) {
+                    settle(token, row, "review", Duration.ZERO, outcome.httpStatus(), detail, true, null);
                     log.error("Usage report needs manual reconciliation identifier={}", row.identifier());
                 } else {
-                    settle(token, row, "pending", retryIn, outcome.httpStatus(), outcome.detail(), true, null);
+                    settle(token, row, "pending", retryIn, outcome.httpStatus(), detail, true, null);
                 }
             }
         }
+    }
+
+    /** Renews the reservation only while this reporter still holds it; false means someone else owns the row now. */
+    private boolean confirmOwnership(String token, Claimed row) {
+        return jdbc.update("""
+                UPDATE usage_outbox SET locked_at = now()
+                 WHERE id = ? AND locked_by = ? AND state = 'sending'
+                """, row.id(), token) == 1;
+    }
+
+    /** Closes the reservation without any call to the provider; the earlier uncertain result stays in last_error. */
+    private void holdWithoutSending(String token, Claimed row, String reason, String state) {
+        String error = withHistory(reason, row);
+        jdbc.update("""
+                UPDATE usage_outbox
+                   SET state = ?, ambiguous = ?, attempts = attempts - 1, last_error = ?,
+                       locked_by = NULL, locked_at = NULL
+                 WHERE id = ? AND locked_by = ? AND state = 'sending'
+                """, state, row.ambiguous(), error, row.id(), token);
+    }
+
+    /** A later outcome must not erase what is known about an earlier uncertain attempt. */
+    private static String withHistory(String detail, Claimed row) {
+        if (!row.ambiguous() || row.previousError() == null || row.previousError().isBlank()
+                || row.previousError().startsWith(detail)) {
+            return detail;
+        }
+        String merged = detail + " | anterior: " + row.previousError();
+        return merged.length() > 500 ? merged.substring(0, 500) : merged;
     }
 
     static Duration backoff(int attempts) {

@@ -47,7 +47,7 @@ pg_restore -d hookguard_restored hookguard.dump
 
 Confirme pela API, não só pelo arquivo de dump: autentique, liste o projeto e leia um evento. Readiness (`/actuator/health/readiness`) observa banco e estado do processo; SMTP fora do ar não tira a API de serviço. O health agregado ainda reporta o correio. RPO é o intervalo entre dumps que você agendar. RTO é o tempo de subir Postgres vazio mais o restore; meça no seu disco. Esta entrega não publica um número de SLO.
 
-Upgrade: o Liquibase aplica só changesets novos; não edite os já aplicados. Para a versão que introduz os changesets 005–009 (dedupe por TTL, índice de job aberto, autenticação de origem/taxa, outbox de uso):
+Upgrade: o Liquibase aplica só changesets novos; não edite os já aplicados. Para a versão que introduz os changesets 005–010 (dedupe por TTL, índice de job aberto, autenticação de origem/taxa, outbox de uso, estado dos webhooks de assinatura):
 
 1. Faça `pg_dump` antes.
 2. **Pare todas as instâncias da versão anterior** (parada controlada). Instâncias antigas não conhecem `ingest_dedupes` nem o índice de job aberto; coexistir com as novas reabre duplicidade.
