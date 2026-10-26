@@ -25,7 +25,7 @@ done
 echo
 echo "Local (neste PC):"
 echo "  Painel/API: http://localhost:9080"
-echo "  Mailpit:    http://localhost:18025"
+echo "  Mailpit:    http://localhost:18025  (só neste PC; não passa pelo túnel)"
 echo
 if [[ -n "${PUBLIC_URL}" ]]; then
   echo "Público (grátis, muda a cada restart):"
@@ -35,7 +35,8 @@ else
   echo "Túnel ainda sem URL. Veja: docker compose -f docker-compose.free.yml logs -f tunnel"
 fi
 echo
-echo "Login: use qualquer e-mail no painel. O magic link aparece na tela"
-echo "(HOOKGUARD_EXPOSE_MAGIC_LINK=true). Não precisa SMTP/Stripe/domínio."
+echo "Login: informe seu e-mail no painel. O link de acesso NÃO aparece na tela nem na resposta"
+echo "da API (a demo tem túnel público): ele chega por e-mail no Mailpit local, em"
+echo "http://localhost:18025. Abra a mensagem e clique no link. Não precisa SMTP externo/Stripe/domínio."
 echo
 echo "Parar: docker compose -f docker-compose.free.yml down"

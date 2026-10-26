@@ -21,7 +21,15 @@ STRIPE_BUSINESS_PRICE_ID=price_...
 
 A origem confiável é a assinatura Stripe, não o IP de quem chamou. O endpoint `POST /v1/billing/stripe/webhook` só aceita o corpo se `Stripe-Signature` validar com `STRIPE_WEBHOOK_SECRET`. Sem segredo configurado a API responde `503 stripe_not_configured`. Assinatura inválida responde `400 invalid_stripe_signature`.
 
-Eventos aplicados: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`. `checkout.session.completed` não altera o plano por si só.
+**Como os eventos são aplicados.** O Stripe não garante a ordem de entrega, pode entregar o mesmo evento mais de uma vez e eventos distintos podem ter o mesmo `created` (documentação de webhooks do Stripe). Por isso o evento é tratado só como aviso:
+
+1. O `id` do evento é gravado uma única vez em `stripe_events` (chave primária). Repetição de evento já concluído responde `200` sem reprocessar; entrega concorrente do mesmo evento enquanto outra está em andamento responde `409 event_in_progress` (o Stripe tenta de novo).
+2. Para `customer.subscription.*`, a API lê a assinatura **atual** no Stripe (`GET /v1/subscriptions/{id}`) e aplica esse estado, nunca o conteúdo do evento. Um `updated` antigo que chegue depois de um `deleted` lê o estado atual (cancelada) e não restaura o plano. Isso exige `STRIPE_API_KEY` configurada (`503 stripe_not_configured` sem ela).
+3. Duas leituras sobrepostas da mesma conta são ordenadas pelo instante (relógio do banco) em que a leitura começou: a gravação baseada em leitura mais antiga é descartada (`ignored:stale`). Nenhum lock de banco é mantido durante a chamada ao Stripe.
+4. Se a consulta ao Stripe falhar, o evento fica `failed`, a resposta é `503 stripe_reconcile_failed` e o Stripe reenvia; um evento só vira `done` depois de aplicado.
+5. Só assinaturas `active`/`trialing` com preço igual a `STRIPE_PRO_PRICE_ID` ou `STRIPE_BUSINESS_PRICE_ID` concedem plano. Preço desconhecido não concede acesso (`ignored:unknown_price`); se a assinatura já associada à conta (`accounts.stripe_subscription_id`) passar a um preço desconhecido, a conta volta a `free`. Cliente sem conta, ou outra assinatura do mesmo cliente enquanto há uma paga associada, não altera nada.
+
+Eventos escutados: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`. Os demais tipos são registrados e ignorados (`checkout.session.completed` não altera o plano). O resultado de cada evento fica em `stripe_events.result`. Limites: não há homologação com o Stripe real (os testes usam um provedor simulado); uma assinatura que o Stripe deixe de encontrar (404) mantém o evento em `failed` até o Stripe desistir de reenviar (cerca de 3 dias, conforme a documentação).
 
 Com URL pública (túnel ou domínio):
 
@@ -51,7 +59,7 @@ Reconciliação (manual): o Stripe **não** permite consultar um meter event pel
 3. O que a ferramenta **permite** concluir: que há ou não uma divergência de quantidade a investigar. O que **não** permite: que um evento específico foi ou não cobrado; que é seguro reenviar depois da janela de 24 h do `identifier` (o Stripe deixa de deduplicar e um reenvio equivocado cobra em duplicidade); ou que um `UPDATE` em massa é correto. Só o operador, com a confirmação de fonte única e ciência do risco de cobrança dupla, decide marcar como `sent` (`UPDATE usage_outbox SET state='sent', sent_at=now() WHERE event_id=...`) ou reenfileirar (`state='pending', ambiguous=false, attempts=0, first_attempt_at=NULL, next_attempt_at=now()`). Sem essa evidência o caso permanece pendente de decisão.
 4. Eventos com mais de 35 dias não são aceitos pelo Stripe (`failed`, `timestamp_window_exceeded`) e exigem ajuste de fatura decidido pelo proprietário.
 
-O código nunca reenvia uma tentativa ambígua depois de 23 h (vira `review`), nem uma recusa 4xx depois de tentativa ambígua.
+O código não reenvia uma tentativa ambígua fora da janela de 23 h: a posse da linha e a janela são conferidas imediatamente antes de cada envio (inclusive para linha `sending` recuperada e para linhas que esperaram a vez num lote), e a linha vai para `review` **sem nenhuma chamada ao Stripe**, preservando o resultado incerto anterior em `last_error`. O limite é exclusivo: com exatamente 23 h já não se reenvia. Uma recusa 4xx depois de tentativa ambígua também vai para `review`. Resultado tardio de um reportador que perdeu a linha é descartado.
 
 Para uma alternativa menos manual, o Stripe também notifica eventos inválidos (`v1.billing.meter.error_report_triggered`); esta entrega não consome essas notificações.
 

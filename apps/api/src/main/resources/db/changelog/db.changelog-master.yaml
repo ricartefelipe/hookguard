@@ -17,3 +17,5 @@ databaseChangeLog:
       file: db/changelog/changes/008-source-auth-rate-limit.yaml
   - include:
       file: db/changelog/changes/009-usage-outbox.yaml
+  - include:
+      file: db/changelog/changes/010-stripe-webhook-state.yaml

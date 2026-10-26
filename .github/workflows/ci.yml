@@ -123,6 +123,23 @@ jobs:
           ! grep -q 'HOOKGUARD_EXPOSE_MAGIC_LINK: "true"' /tmp/oracle.yml
           ! grep -q 'ALLOW_HTTP: "true"' /tmp/oracle.yml
           grep -q '^HOOKGUARD_EXPOSE_MAGIC_LINK=false' env.oracle.example
+      - name: Compose free (tem tunel publico) nao expoe o link de login e isola o Mailpit
+        run: |
+          docker compose -f docker-compose.free.yml config > /tmp/free.yml
+          grep -q 'HOOKGUARD_EXPOSE_MAGIC_LINK: "false"' /tmp/free.yml
+          ! grep -q 'HOOKGUARD_EXPOSE_MAGIC_LINK: "true"' /tmp/free.yml
+          ! grep -q 'ALLOW_HTTP: "true"' /tmp/free.yml
+          python3 - <<'PY'
+          import yaml
+          cfg = yaml.safe_load(open("/tmp/free.yml"))
+          ports = cfg["services"]["mailpit"].get("ports", [])
+          assert ports and all(p.get("host_ip") == "127.0.0.1" for p in ports), ports
+          assert not any(p.get("target") == 1025 for p in ports), ports
+          for name, svc in cfg["services"].items():
+              if name != "mailpit":
+                  assert not any(p.get("target") in (8025, 1025) for p in svc.get("ports", [])), name
+          PY
+          ! grep -qiE 'mailpit|8025' deploy/Caddyfile.free
       - name: Caddyfiles validos e sem otimizador de imagens
         run: |
           for f in Caddyfile Caddyfile.free; do

@@ -5,7 +5,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.com.ricarte.hookguard.config.HookguardProperties;
-import br.com.ricarte.hookguard.domain.AccountRepository;
 import br.com.ricarte.hookguard.web.ApiExceptionHandler;
 import com.stripe.net.Webhook;
 import java.security.InvalidKeyException;
@@ -62,7 +61,7 @@ class StripeWebhookTest {
     }
 
     private static MockMvc mockMvc(String secret) {
-        StripeWebhookController controller = new StripeWebhookController(properties(secret), org.mockito.Mockito.mock(AccountRepository.class));
+        StripeWebhookController controller = new StripeWebhookController(properties(secret), org.mockito.Mockito.mock(StripeWebhookService.class));
         return MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
