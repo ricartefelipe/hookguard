@@ -62,9 +62,8 @@ jobs:
       - name: Auditoria de dependencias de producao (falha em critical)
         working-directory: apps/web
         run: npm audit --omit=dev --audit-level=critical
-      - name: Auditoria completa (informativa)
+      - name: Auditoria completa, incluindo desenvolvimento (falha em high)
         working-directory: apps/web
-        continue-on-error: true
         run: npm audit --audit-level=high --json > npm-audit.json
       - name: Relatorio da auditoria
         if: always()
@@ -85,9 +84,10 @@ jobs:
           cache: maven
       - name: SBOM com dependencias transitivas
         run: mvn -B -q -f apps/api/pom.xml -DskipTests package org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom -DoutputFormat=json -DincludeTestScope=false
-      - name: Scan do SBOM (informativo ate o proprietario decidir sobre os achados sem correcao compativel)
-        continue-on-error: true
-        run: docker run --rm -v "$PWD/apps/api/target:/t:ro" aquasec/trivy:latest sbom --severity HIGH,CRITICAL --exit-code 1 --format json -o /t/trivy-sbom.json /t/bom.json
+      - name: Scan do SBOM (bloqueante em HIGH/CRITICAL)
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm -v "$PWD/apps/api/target:/t" -v "$RUNNER_TEMP/trivy-cache:/root/.cache" aquasec/trivy:0.76.1 sbom --severity HIGH,CRITICAL --exit-code 1 --skip-version-check --format json -o /t/trivy-sbom.json /t/bom.json
       - name: SBOM e relatorio do scan
         if: always()
         uses: actions/upload-artifact@v4
@@ -97,6 +97,24 @@ jobs:
             apps/api/target/bom.json
             apps/api/target/trivy-sbom.json
           if-no-files-found: ignore
+
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir as imagens finais da API e do painel (mesmos Dockerfiles do Compose)
+        run: |
+          docker build -t hookguard-api:ci apps/api
+          docker build -t hookguard-web:ci apps/web
+      - name: Scan das imagens finais (bloqueante em HIGH/CRITICAL)
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          status=0
+          for image in hookguard-api:ci hookguard-web:ci; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$RUNNER_TEMP/trivy-cache:/root/.cache" \
+              aquasec/trivy:0.76.1 image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --skip-version-check "$image" || status=1
+          done
+          exit "$status"
 
   deploy-config:
     runs-on: ubuntu-latest

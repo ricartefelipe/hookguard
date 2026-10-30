@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.16</version>
+        <version>4.0.9</version>
         <relativePath/>
     </parent>
 
@@ -20,19 +20,12 @@
     <properties>
         <java.version>21</java.version>
         <maven.compiler.release>21</maven.compiler.release>
-        <!-- Patch-level overrides of the versions managed by the Spring Boot parent, for published fixes
-             (see docs/OPERACAO.md, dependency audit). Remove when the parent catches up. -->
-        <tomcat.version>10.1.61</tomcat.version>
-        <jackson-bom.version>2.21.8</jackson-bom.version>
-        <postgresql.version>42.7.14</postgresql.version>
-        <commons-lang3.version>3.18.0</commons-lang3.version>
-        <log4j2.version>2.25.5</log4j2.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -55,8 +48,8 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.liquibase</groupId>
-            <artifactId>liquibase-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-liquibase</artifactId>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -69,6 +62,16 @@
             <version>26.12.0</version>
         </dependency>
 
+        <dependency>
+            <!-- O código usa a API do Jackson 2 (com.fasterxml); o Boot 4 traz Jackson 3 por padrão. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jackson2</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
