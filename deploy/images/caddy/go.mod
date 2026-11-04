@@ -46,7 +46,9 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/go-chi/chi/v5 v5.3.2 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
+	// go-jose v3: commit do ramo v3 com a correção do CVE-2026-116587, ainda sem tag; trocar por v3.0.6 quando sair.
+	// CVE-2026-116585 e CVE-2026-116586 (médias) seguem sem correção na v3; o Trivy deixa de apontá-las por faixa de versão.
+	github.com/go-jose/go-jose/v3 v3.0.6-0.20261030183946-0e502b87c7aa // indirect
 	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
