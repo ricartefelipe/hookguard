@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
         env:
           POSTGRES_DB: hookguard
           POSTGRES_USER: hookguard
@@ -87,7 +87,7 @@ jobs:
       - name: Scan do SBOM (bloqueante em HIGH/CRITICAL)
         run: |
           mkdir -p "$RUNNER_TEMP/trivy-cache"
-          docker run --rm -v "$PWD/apps/api/target:/t" -v "$RUNNER_TEMP/trivy-cache:/root/.cache" aquasec/trivy:0.76.1 sbom --severity HIGH,CRITICAL --exit-code 1 --skip-version-check --format json -o /t/trivy-sbom.json /t/bom.json
+          docker run --rm -v "$PWD/apps/api/target:/t" -v "$RUNNER_TEMP/trivy-cache:/root/.cache" aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c sbom --severity HIGH,CRITICAL --exit-code 1 --skip-version-check --format json -o /t/trivy-sbom.json /t/bom.json
       - name: SBOM e relatorio do scan
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,17 +102,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Construir as imagens finais da API e do painel (mesmos Dockerfiles do Compose)
+      - name: Construir as imagens finais da API, do painel, do banco e do proxy (mesmos Dockerfiles do Compose)
         run: |
           docker build -t hookguard-api:ci apps/api
           docker build -t hookguard-web:ci apps/web
-      - name: Scan das imagens finais (bloqueante em HIGH/CRITICAL)
+          docker build -t hookguard-postgres:ci -f deploy/images/postgres.Dockerfile deploy/images
+          docker build -t hookguard-caddy:ci deploy/images/caddy
+      - name: Scan das imagens finais (bloqueante em HIGH/CRITICAL; exceções com validade em .trivyignore.yaml)
         run: |
           mkdir -p "$RUNNER_TEMP/trivy-cache"
           status=0
-          for image in hookguard-api:ci hookguard-web:ci; do
+          for image in hookguard-api:ci hookguard-web:ci hookguard-postgres:ci hookguard-caddy:ci; do
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$RUNNER_TEMP/trivy-cache:/root/.cache" \
-              aquasec/trivy:0.76.1 image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --skip-version-check "$image" || status=1
+              -v "$PWD/.trivyignore.yaml:/trivyignore.yaml:ro" \
+              aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image --scanners vuln --severity HIGH,CRITICAL \
+              --ignorefile /trivyignore.yaml --exit-code 1 --skip-version-check "$image" || status=1
           done
           exit "$status"
 
@@ -160,9 +164,10 @@ jobs:
           ! grep -qiE 'mailpit|8025' deploy/Caddyfile.free
       - name: Caddyfiles validos e sem otimizador de imagens
         run: |
+          docker build -t hookguard-caddy:ci deploy/images/caddy
           for f in Caddyfile Caddyfile.free; do
             grep -q '/_next/image\*' deploy/$f
-            docker run --rm -e HOOKGUARD_DOMAIN=ci.invalid -v "$PWD/deploy/$f:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile
+            docker run --rm -e HOOKGUARD_DOMAIN=ci.invalid -v "$PWD/deploy/$f:/etc/caddy/Caddyfile:ro" hookguard-caddy:ci caddy validate --config /etc/caddy/Caddyfile
           done
 
   drills:

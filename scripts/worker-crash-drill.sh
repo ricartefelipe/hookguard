@@ -27,8 +27,8 @@ fail() { echo "FALHOU: $*" >&2; exit 1; }
 sql() { docker exec -i "$PG_NAME" psql -U hookguard -d hookguard -v ON_ERROR_STOP=1 -tA "$@"; }
 
 docker run -d --name "$PG_NAME" -e POSTGRES_USER=hookguard -e POSTGRES_PASSWORD=hookguard -e POSTGRES_DB=hookguard \
-  -p "127.0.0.1:${PG_PORT}:5432" postgres:16-alpine >/dev/null
-for _ in $(seq 1 40); do docker exec "$PG_NAME" pg_isready -U hookguard -d hookguard >/dev/null 2>&1 && break; sleep 1; done
+  -p "127.0.0.1:${PG_PORT}:5432" postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab >/dev/null
+for _ in $(seq 1 40); do docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U hookguard -d hookguard >/dev/null 2>&1 && break; sleep 1; done
 
 # destino: registra cada requisicao; DELAY_MS por requisicao vem do arquivo de modo
 cat > "$WORK/dest.py" <<'PY'
