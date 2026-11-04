@@ -9,8 +9,11 @@ FROM eclipse-temurin:21-jre@sha256:0b99b3376fbb50dbf9c0af8535fdd5b8eb0d3fdfc8b1e
 # imagem; os pacotes do SO recebem as correções publicadas.
 RUN rm -f /usr/bin/pebble \
     && apt-get update && apt-get upgrade -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 hookguard \
+    && useradd --system --uid 10001 --gid hookguard --no-create-home --shell /usr/sbin/nologin hookguard
 WORKDIR /app
 COPY --from=build /workspace/target/hookguard-api-*.jar /app/app.jar
+USER hookguard
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
