@@ -57,9 +57,19 @@ services:
       - api
     restart: unless-stopped
 
-  caddy:
+  caddy-permissions:
+    # Ajuste único do dono dos volumes de certificados (criados como root pela imagem oficial): o Caddy roda como uid 1001.
     build:
       context: ./deploy/images/caddy
+    image: hookguard-caddy:2.11
+    user: "0"
+    entrypoint: ["chown", "-R", "1001:1001", "/data", "/config"]
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: "no"
+
+  caddy:
     image: hookguard-caddy:2.11
     ports:
       - "80:80"
@@ -71,8 +81,12 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
-      - web
+      caddy-permissions:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+      web:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

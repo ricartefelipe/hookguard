@@ -108,13 +108,15 @@ jobs:
           docker build -t hookguard-web:ci apps/web
           docker build -t hookguard-postgres:ci -f deploy/images/postgres.Dockerfile deploy/images
           docker build -t hookguard-caddy:ci deploy/images/caddy
-      - name: Scan das imagens finais (bloqueante em HIGH/CRITICAL)
+      - name: Scan das imagens finais (bloqueante em HIGH/CRITICAL; exceções com validade em .trivyignore.yaml)
         run: |
           mkdir -p "$RUNNER_TEMP/trivy-cache"
           status=0
           for image in hookguard-api:ci hookguard-web:ci hookguard-postgres:ci hookguard-caddy:ci; do
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$RUNNER_TEMP/trivy-cache:/root/.cache" \
-              aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --skip-version-check "$image" || status=1
+              -v "$PWD/.trivyignore.yaml:/trivyignore.yaml:ro" \
+              aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image --scanners vuln --severity HIGH,CRITICAL \
+              --ignorefile /trivyignore.yaml --exit-code 1 --skip-version-check "$image" || status=1
           done
           exit "$status"
 

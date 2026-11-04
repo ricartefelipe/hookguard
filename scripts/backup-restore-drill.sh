@@ -50,11 +50,12 @@ echo "== infraestrutura descartavel"
 docker run -d --name "$PG_NAME" -e POSTGRES_USER=hookguard -e POSTGRES_PASSWORD=hookguard \
   -e POSTGRES_DB=hookguard_src -p "127.0.0.1:${PG_PORT}:5432" postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab >/dev/null
 docker run -d --name "$MAIL_NAME" -p "127.0.0.1:${SMTP_PORT}:1025" axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231 >/dev/null
+# Pelo TCP: o servidor temporário da inicialização só escuta no socket e responde pronto antes do reinício definitivo.
 for _ in $(seq 1 40); do
-  docker exec "$PG_NAME" pg_isready -U hookguard -d hookguard_src >/dev/null 2>&1 && break
+  docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U hookguard -d hookguard_src >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$PG_NAME" pg_isready -U hookguard -d hookguard_src >/dev/null
+docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U hookguard -d hookguard_src >/dev/null
 
 # destino controlado: /ok responde 200, /fail responde 500
 cat > "$WORK/dest.py" <<'PY'
