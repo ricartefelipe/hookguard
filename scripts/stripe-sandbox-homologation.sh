@@ -46,8 +46,8 @@ summary() { # $1 start $2 end -> soma do agregado
 }
 
 docker run -d --name "$PG_NAME" -e POSTGRES_USER=hookguard -e POSTGRES_PASSWORD=hookguard -e POSTGRES_DB=hookguard \
-  -p "127.0.0.1:${PG_PORT}:5432" postgres:16-alpine >/dev/null
-for _ in $(seq 1 40); do docker exec "$PG_NAME" pg_isready -U hookguard -d hookguard >/dev/null 2>&1 && break; sleep 1; done
+  -p "127.0.0.1:${PG_PORT}:5432" postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab >/dev/null
+for _ in $(seq 1 40); do docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U hookguard -d hookguard >/dev/null 2>&1 && break; sleep 1; done
 cat > "$WORK/dest.py" <<'PY'
 import http.server, sys
 class H(http.server.BaseHTTPRequestHandler):

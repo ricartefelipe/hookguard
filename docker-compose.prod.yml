@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:16-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
+    build:
+      context: ./deploy/images
+      dockerfile: postgres.Dockerfile
+    image: hookguard-postgres:16
     environment:
       POSTGRES_DB: ${HOOKGUARD_DB_NAME:-hookguard}
       POSTGRES_USER: ${HOOKGUARD_DB_USER:-hookguard}
@@ -54,8 +57,20 @@ services:
       - api
     restart: unless-stopped
 
+  caddy-permissions:
+    # Ajuste único do dono dos volumes de certificados (criados como root pela imagem oficial): o Caddy roda como uid 1001.
+    build:
+      context: ./deploy/images/caddy
+    image: hookguard-caddy:2.11
+    user: "0"
+    entrypoint: ["chown", "-R", "1001:1001", "/data", "/config"]
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: "no"
+
   caddy:
-    image: caddy:2.11-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    image: hookguard-caddy:2.11
     ports:
       - "80:80"
       - "443:443"
@@ -66,8 +81,12 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
-      - web
+      caddy-permissions:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+      web:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
