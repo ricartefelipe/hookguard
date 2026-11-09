@@ -4,7 +4,16 @@
 
 1. Abra o painel.
 2. Peça um magic link por e-mail **ou** use GitHub (se configurado).
-3. Em local, o e-mail aparece no Mailpit (`http://localhost:8025`). Com `HOOKGUARD_EXPOSE_MAGIC_LINK=true` (somente desenvolvimento local, sem túnel nem rede pública), o link também aparece na resposta da API.
+3. Em demo, informe o código de acesso da demo para o link aparecer na tela; sem ele, o link vai só por e-mail.
+4. Em local, o e-mail aparece no Mailpit (`http://localhost:8025`).
+
+O link só volta na resposta de `POST /v1/auth/magic-link` quando `HOOKGUARD_EXPOSE_MAGIC_LINK=true`, `HOOKGUARD_DEMO_ACCESS_CODE` não está vazio e o corpo traz `accessCode` igual a ele. Nos outros casos a resposta é `{"sent":true,"email":"..."}` e o e-mail é enviado do mesmo jeito. O código é público na demonstração, não um segredo: quem o conhece entra com qualquer e-mail, então não use o modo em ambiente com dados reais.
+
+```bash
+curl -X POST "https://SEU_DOMINIO/v1/auth/magic-link" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"voce@empresa.com","name":"Você","accessCode":"CODIGO_DA_DEMO"}'
+```
 
 ## 2. Criar projeto
 

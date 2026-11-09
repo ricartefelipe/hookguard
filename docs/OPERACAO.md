@@ -11,7 +11,7 @@ cd apps/api && mvn spring-boot:run
 cd apps/web && npm install && npm run dev
 ```
 
-Produção usa `docker-compose.prod.yml`. `HOOKGUARD_DELIVERY_ALLOW_HTTP` fica `false`. Não publique `HOOKGUARD_EXPOSE_MAGIC_LINK=true`. O proxy público só encaminha `/v1/*`, `/actuator/health*` e `/actuator/info*`. Prometheus continua no processo, fora do hostname público. O provisionamento interno não entra no proxy público.
+Produção usa `docker-compose.prod.yml`. `HOOKGUARD_DELIVERY_ALLOW_HTTP` fica `false`. Não publique `HOOKGUARD_EXPOSE_MAGIC_LINK=true`: com ele, quem enviar o `HOOKGUARD_DEMO_ACCESS_CODE` recebe o link de login na resposta e entra com qualquer e-mail (uso exclusivo de demonstração; código vazio = o link nunca volta). O proxy público só encaminha `/v1/*`, `/actuator/health*` e `/actuator/info*`. Prometheus continua no processo, fora do hostname público. O provisionamento interno não entra no proxy público.
 
 `HOOKGUARD_TRUST_FORWARDED_HOST` só tem efeito com `HOOKGUARD_FORWARDED_HOST_SUFFIX` (por exemplo `trycloudflare.com`). Sem o sufixo, o link de login usa `HOOKGUARD_APP_BASE_URL`.
 

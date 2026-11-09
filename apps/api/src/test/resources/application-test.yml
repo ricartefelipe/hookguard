@@ -38,6 +38,7 @@ hookguard:
     magic-link-ttl-minutes: 20
     session-ttl-days: 30
     expose-magic-link: true
+    demo-access-code: test-demo-code
     github-client-id: ""
     github-client-secret: ""
   retention:

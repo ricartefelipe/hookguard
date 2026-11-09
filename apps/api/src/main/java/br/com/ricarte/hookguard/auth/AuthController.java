@@ -45,7 +45,8 @@ public class AuthController {
         return authService.requestMagicLink(
                 request.email(),
                 request.name(),
-                PublicBaseUrl.resolve(httpRequest, properties)
+                PublicBaseUrl.resolve(httpRequest, properties),
+                request.accessCode()
         );
     }
 
@@ -142,7 +143,7 @@ public class AuthController {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    public record MagicLinkRequest(@NotBlank @Email String email, String name) {
+    public record MagicLinkRequest(@NotBlank @Email String email, String name, String accessCode) {
     }
 
     public record VerifyRequest(@NotBlank String token) {
