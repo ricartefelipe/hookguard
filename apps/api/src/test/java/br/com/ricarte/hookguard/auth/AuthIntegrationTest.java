@@ -44,7 +44,7 @@ class AuthIntegrationTest extends PostgresIntegrationTest {
         MvcResult request = mockMvc.perform(post("/v1/auth/magic-link")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"%s","name":"Auth User"}
+                                {"email":"%s","name":"Auth User","accessCode":"test-demo-code"}
                                 """.formatted(email)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sent").value(true))

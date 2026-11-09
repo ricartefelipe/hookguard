@@ -77,7 +77,7 @@ JAR="$(ls "$ROOT"/apps/api/target/hookguard-api-*.jar | grep -v original | head 
 
 start_api() { # $1 database  $2 worker  $3 allow_http
   HOOKGUARD_DB_URL="jdbc:postgresql://127.0.0.1:${PG_PORT}/$1" HOOKGUARD_DB_USER=hookguard HOOKGUARD_DB_PASSWORD=hookguard \
-  HOOKGUARD_SMTP_HOST=127.0.0.1 HOOKGUARD_SMTP_PORT="$SMTP_PORT" HOOKGUARD_EXPOSE_MAGIC_LINK=true \
+  HOOKGUARD_SMTP_HOST=127.0.0.1 HOOKGUARD_SMTP_PORT="$SMTP_PORT" HOOKGUARD_EXPOSE_MAGIC_LINK=true HOOKGUARD_DEMO_ACCESS_CODE=drill-local \
   HOOKGUARD_WORKER_ENABLED="$2" HOOKGUARD_DELIVERY_ALLOW_HTTP="$3" HOOKGUARD_PORT="$API_PORT" \
   HOOKGUARD_WORKER_POLL_MS=500 STRIPE_API_KEY= STRIPE_METER_EVENT_NAME= \
   java -jar "$JAR" >"$WORK/api-$1.log" 2>&1 &
@@ -94,7 +94,7 @@ stop_api() { kill "$API_PID" >/dev/null 2>&1 || true; wait "$API_PID" >/dev/null
 login() {
   local link token
   link="$(curl -sf -X POST "http://127.0.0.1:${API_PORT}/v1/auth/magic-link" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"${EMAIL}\"}" | jget magicLink)"
+    -d "{\"email\":\"${EMAIL}\",\"accessCode\":\"drill-local\"}" | jget magicLink)"
   token="${link##*token=}"
   curl -sf -X POST "http://127.0.0.1:${API_PORT}/v1/auth/verify" -H 'Content-Type: application/json' \
     -d "{\"token\":\"${token}\"}" | jget sessionToken

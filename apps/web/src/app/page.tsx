@@ -10,6 +10,7 @@ export default function HomePage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -32,7 +33,11 @@ export default function HomePage() {
     setSent(false);
     setDevLink(null);
     try {
-      const result = await requestMagicLink(email.trim(), name.trim() || email.trim());
+      const result = await requestMagicLink(
+        email.trim(),
+        name.trim() || email.trim(),
+        accessCode.trim() || undefined
+      );
       setSent(true);
       if (result.magicLink) {
         setDevLink(result.magicLink);
@@ -96,17 +101,27 @@ export default function HomePage() {
               placeholder="Opcional para magic link"
             />
           </div>
+          <div className="field">
+            <label htmlFor="access-code">Código de acesso da demo (opcional)</label>
+            <input
+              id="access-code"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              placeholder="Só em ambiente de demonstração"
+              autoComplete="off"
+            />
+          </div>
           <button className="button" type="submit" disabled={loading}>
             {loading ? "Enviando..." : "Enviar link de acesso"}
           </button>
-          {sent ? (
+          {sent && !devLink ? (
             <p className="muted" style={{ marginTop: "0.9rem" }}>
               Link enviado. Confira o e-mail (Mailpit em local: http://localhost:8025).
             </p>
           ) : null}
           {devLink ? (
-            <p className="mono" style={{ marginTop: "0.75rem" }}>
-              Dev: <a href={devLink}>{devLink}</a>
+            <p className="mono" style={{ marginTop: "0.75rem", overflowWrap: "anywhere" }}>
+              Demo: <a href={devLink}>{devLink}</a>
             </p>
           ) : null}
           {error ? <p className="error">{error}</p> : null}

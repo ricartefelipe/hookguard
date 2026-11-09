@@ -25,7 +25,7 @@ docker compose -f docker-compose.free.yml logs -f tunnel
 | Stripe / GitHub | Opcional — plano Free funciona sem eles |
 | Domínio próprio | Não precisa |
 
-Como entrar: informe o e-mail no painel e abra o Mailpit em `http://localhost:18025` (publicado só em `127.0.0.1`; não passa pelo Caddy nem pelo túnel, então só quem está no seu PC o lê). A mensagem traz o link de acesso. A API não devolve o link nem o token na resposta, porque a demo tem túnel público e isso permitiria entrar em qualquer conta só informando o e-mail. Não há opção de exposição neste Compose; para desenvolver com o link na resposta, rode a API localmente com `HOOKGUARD_EXPOSE_MAGIC_LINK=true` (ver README), sem túnel.
+Como entrar: informe o e-mail no painel e abra o Mailpit em `http://localhost:18025` (publicado só em `127.0.0.1`; não passa pelo Caddy nem pelo túnel, então só quem está no seu PC o lê). A mensagem traz o link de acesso. A API não devolve o link nem o token na resposta, porque a demo tem túnel público e isso permitiria entrar em qualquer conta só informando o e-mail. Não há opção de exposição neste Compose; para desenvolver com o link na resposta, rode a API localmente com `HOOKGUARD_EXPOSE_MAGIC_LINK=true` e `HOOKGUARD_DEMO_ACCESS_CODE` (ver README), sem túnel.
 
 ## Limites
 

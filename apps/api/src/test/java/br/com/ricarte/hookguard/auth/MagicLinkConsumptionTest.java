@@ -40,7 +40,7 @@ class MagicLinkConsumptionTest extends PostgresIntegrationTest {
     }
 
     private String issue(String email) {
-        String link = String.valueOf(authService.requestMagicLink(email, "T").get("magicLink"));
+        String link = String.valueOf(authService.requestMagicLink(email, "T", null, "test-demo-code").get("magicLink"));
         return link.substring(link.indexOf("token=") + 6);
     }
 

@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * Whole journey through the public HTTP surface. Boundary stand-ins: the mail sender is a no-op
- * (the magic link comes back in the response because expose-magic-link is on in the test profile),
+ * (the magic link comes back in the response because the test profile turns expose-magic-link on and the request carries the demo access code),
  * and the customer's endpoint is a local MockWebServer. Stripe and GitHub are not involved.
  */
 @AutoConfigureMockMvc
@@ -59,7 +59,7 @@ class JourneyIntegrationTest extends PostgresIntegrationTest {
 
     private String login(String email) throws Exception {
         JsonNode link = json.readTree(mvc.perform(post("/v1/auth/magic-link").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\"}"))
+                        .content("{\"email\":\"" + email + "\",\"accessCode\":\"test-demo-code\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String token = link.get("magicLink").asText().replaceAll(".*token=", "");
         JsonNode session = json.readTree(mvc.perform(post("/v1/auth/verify").contentType(MediaType.APPLICATION_JSON)

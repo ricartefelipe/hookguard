@@ -89,12 +89,13 @@ async function parse<T>(response: Response): Promise<T> {
 
 export async function requestMagicLink(
   email: string,
-  name: string
+  name: string,
+  accessCode?: string
 ): Promise<{ sent: boolean; email: string; magicLink?: string }> {
   const response = await fetch(`${resolveApiBase()}/v1/auth/magic-link`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, name }),
+    body: JSON.stringify(accessCode ? { email, name, accessCode } : { email, name }),
   });
   return parse(response);
 }
