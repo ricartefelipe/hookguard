@@ -21,7 +21,9 @@ DEST_PORT="${HOOKGUARD_DRILL_DEST_PORT:-18999}"
 WORK="$(mktemp -d)"
 EMAIL="drill@example.com"
 KEY="drill-key-1"
-BODY='{"order":1,"password":"drill-secret-value"}'
+# Valor sintetico: o corpo leva um campo sensivel para o ensaio provar que a previa nao o expoe.
+MASKED_VALUE="drill-masked-value"
+BODY="{\"order\":1,\"password\":\"${MASKED_VALUE}\"}"
 
 for name in "$PG_NAME" "$MAIL_NAME"; do
   if docker ps -a --format '{{.Names}}' | grep -qx "$name"; then
@@ -170,7 +172,7 @@ DETAIL="$(api "$API/v1/events/${E1}" "${AUTH[@]}")"
 EXPECTED_FP="$(printf '%s' "$BODY" | sha256sum | cut -d' ' -f1)"
 [[ "$(echo "$DETAIL" | jget payloadFingerprint)" == "$EXPECTED_FP" ]] || fail "fingerprint na API"
 [[ "$(echo "$DETAIL" | jget attempts.0.httpStatus)" == "200" ]] || fail "tentativa registrada na API"
-echo "$DETAIL" | grep -q 'drill-secret-value' && fail "previa expôs segredo"
+echo "$DETAIL" | grep -q "$MASKED_VALUE" && fail "previa expôs segredo"
 # dedupe preservado: mesma chave e mesmo body devolvem o mesmo evento, sem novo evento nem uso
 AGAIN="$(api -X POST "$API/v1/ingest/${OK_KEY}" -H 'Content-Type: application/json' -H "X-Idempotency-Key: ${KEY}" -d "$BODY" | jget eventId)"
 [[ "$AGAIN" == "$E1" ]] || fail "dedupe nao sobreviveu ao restore"
