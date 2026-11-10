@@ -1,6 +1,7 @@
 package br.com.ricarte.hookguard.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties(prefix = "hookguard")
 public record HookguardProperties(
@@ -51,6 +52,7 @@ public record HookguardProperties(
             int magicLinkTtlMinutes,
             int sessionTtlDays,
             boolean exposeMagicLink,
+            @DefaultValue("") String demoAccessCode,
             boolean trustForwardedHost,
             String forwardedHostSuffix,
             String githubClientId,

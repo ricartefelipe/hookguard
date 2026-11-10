@@ -83,7 +83,7 @@ python3 -I "$WORK/smtp.py" "$SMTP_PORT" & PIDS+=($!)
 (cd "$ROOT/apps/api" && mvn -q -B -DskipTests package)
 JAR="$(ls "$ROOT"/apps/api/target/hookguard-api-*.jar | grep -v original | head -1)"
 HOOKGUARD_DB_URL="jdbc:postgresql://127.0.0.1:${PG_PORT}/hookguard" HOOKGUARD_DB_USER=hookguard HOOKGUARD_DB_PASSWORD=hookguard \
-HOOKGUARD_SMTP_HOST=127.0.0.1 HOOKGUARD_SMTP_PORT="$SMTP_PORT" HOOKGUARD_EXPOSE_MAGIC_LINK=true HOOKGUARD_DELIVERY_ALLOW_HTTP=true HOOKGUARD_WORKER_ENABLED=true \
+HOOKGUARD_SMTP_HOST=127.0.0.1 HOOKGUARD_SMTP_PORT="$SMTP_PORT" HOOKGUARD_EXPOSE_MAGIC_LINK=true HOOKGUARD_DEMO_ACCESS_CODE=homolog-local HOOKGUARD_DELIVERY_ALLOW_HTTP=true HOOKGUARD_WORKER_ENABLED=true \
 HOOKGUARD_WORKER_POLL_MS=300 HOOKGUARD_BILLING_STRIPE_API_BASE="$STRIPE_BASE" HOOKGUARD_PORT="$API_PORT" HOOKGUARD_INGEST_RATE_LIMIT=0 \
 java -jar "$JAR" >"$WORK/api.log" 2>&1 & PIDS+=($!)
 for _ in $(seq 1 90); do curl -sf "http://127.0.0.1:${API_PORT}/actuator/health/readiness" >/dev/null 2>&1 && break; sleep 2; done
@@ -114,8 +114,8 @@ SENT=$(sql -c "SELECT count(*) FROM usage_outbox WHERE state='sent'")
 echo "ok: 3 linhas sent no banco"
 
 echo "== replay pela API autenticada nao pode criar nova intencao de cobranca"
-# stack local e descartavel: so aqui o link de login volta na resposta, para obter a sessao pelo caminho publico
-LINK=$(curl -sf -X POST "$API/v1/auth/magic-link" -H 'Content-Type: application/json' -d '{"email":"homolog@example.com"}' \
+# stack local e descartavel: so aqui o link de login volta na resposta (com o codigo de acesso local), para obter a sessao pelo caminho publico
+LINK=$(curl -sf -X POST "$API/v1/auth/magic-link" -H 'Content-Type: application/json' -d '{"email":"homolog@example.com","accessCode":"homolog-local"}' \
   | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["magicLink"])')
 SESSION=$(curl -sf -X POST "$API/v1/auth/verify" -H 'Content-Type: application/json' -d "{\"token\":\"${LINK##*token=}\"}" \
   | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["sessionToken"])')

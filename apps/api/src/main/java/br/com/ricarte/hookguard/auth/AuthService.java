@@ -11,6 +11,8 @@ import br.com.ricarte.hookguard.domain.Session;
 import br.com.ricarte.hookguard.domain.SessionRepository;
 import br.com.ricarte.hookguard.project.ProjectService;
 import br.com.ricarte.hookguard.web.ApiException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -61,10 +63,15 @@ public class AuthService {
 
     @Transactional
     public Map<String, Object> requestMagicLink(String email, String name) {
-        return requestMagicLink(email, name, null);
+        return requestMagicLink(email, name, null, null);
     }
 
-    public Map<String, Object> requestMagicLink(String email, String name, String appBaseUrlOverride) {
+    public Map<String, Object> requestMagicLink(
+            String email,
+            String name,
+            String appBaseUrlOverride,
+            String accessCode
+    ) {
         Account account = projectService.ensureAccount(email, name == null || name.isBlank() ? email : name);
         String rawToken = randomToken(32);
         Instant now = Instant.now();
@@ -86,10 +93,25 @@ public class AuthService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("sent", true);
         body.put("email", account.getEmail());
-        if (properties.auth().exposeMagicLink()) {
+        if (revealMagicLink(accessCode)) {
             body.put("magicLink", link);
         }
         return body;
+    }
+
+    /**
+     * Modo demo: devolver o link na resposta equivale a login sem e-mail, então só acontece com o código de
+     * acesso da demo. Origem da requisição (IP, loopback, cabeçalhos de proxy) não serve de prova, porque pode
+     * ser forjada. Sem código configurado, ou com código diferente, o link vai só por e-mail.
+     */
+    private boolean revealMagicLink(String accessCode) {
+        String expected = properties.auth().demoAccessCode();
+        return properties.auth().exposeMagicLink()
+                && expected != null && !expected.isBlank()
+                && accessCode != null
+                && MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.UTF_8),
+                        accessCode.getBytes(StandardCharsets.UTF_8));
     }
 
     @Transactional

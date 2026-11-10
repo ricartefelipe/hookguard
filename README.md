@@ -29,11 +29,22 @@ docs/      — especificação, plano e uso
 docker compose up -d
 cp .env.example .env
 
-cd apps/api && HOOKGUARD_DELIVERY_ALLOW_HTTP=true HOOKGUARD_EXPOSE_MAGIC_LINK=true mvn spring-boot:run
+cd apps/api && HOOKGUARD_DELIVERY_ALLOW_HTTP=true HOOKGUARD_EXPOSE_MAGIC_LINK=true HOOKGUARD_DEMO_ACCESS_CODE=dev-local mvn spring-boot:run
 cd apps/web && npm install && npm run dev
 ```
 
-O `.env.example` traz valores seguros de produção (sem senha padrão, `ALLOW_HTTP=false`, link de login não exposto). Para desenvolver contra destinos locais, passe as duas variáveis acima na linha de comando, como no exemplo.
+O `.env.example` traz valores seguros de produção (sem senha padrão, `ALLOW_HTTP=false`, link de login não exposto). Para desenvolver contra destinos locais, passe as variáveis acima na linha de comando, como no exemplo.
+
+### Código de acesso da demonstração
+
+Com `HOOKGUARD_EXPOSE_MAGIC_LINK=true`, a resposta de `POST /v1/auth/magic-link` só traz `magicLink` quando `HOOKGUARD_DEMO_ACCESS_CODE` não está vazio e o corpo envia `accessCode` igual a ele (no painel, o campo "Código de acesso da demo"). Sem código configurado, ou com código diferente, a resposta é só `{"sent":true,"email":"..."}`. O e-mail é enviado em todos os casos. IP, loopback e cabeçalhos de proxy não contam como prova.
+
+O código é público na demonstração, não um segredo: quem o conhece entra com qualquer e-mail. Nenhum Compose deste repositório liga o modo. Um ambiente de demonstração mantido fora daqui liga o recurso passando as duas variáveis à API:
+
+```yaml
+HOOKGUARD_EXPOSE_MAGIC_LINK: "true"
+HOOKGUARD_DEMO_ACCESS_CODE: ${HOOKGUARD_DEMO_ACCESS_CODE:-}
+```
 
 - API: `http://localhost:8080`
 - Painel: `http://localhost:3000`

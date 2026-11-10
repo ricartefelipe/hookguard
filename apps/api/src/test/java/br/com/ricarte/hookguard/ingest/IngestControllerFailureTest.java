@@ -116,6 +116,7 @@ class IngestControllerFailureTest {
                         20,
                         30,
                         false,
+                        "",
                         false,
                         "",
                         "",

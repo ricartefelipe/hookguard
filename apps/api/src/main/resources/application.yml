@@ -99,6 +99,8 @@ hookguard:
     magic-link-ttl-minutes: 20
     session-ttl-days: 30
     expose-magic-link: ${HOOKGUARD_EXPOSE_MAGIC_LINK:false}
+    # Com expose-magic-link, o link só volta na resposta para quem enviar este código. Vazio = nunca volta.
+    demo-access-code: ${HOOKGUARD_DEMO_ACCESS_CODE:}
     trust-forwarded-host: ${HOOKGUARD_TRUST_FORWARDED_HOST:false}
     forwarded-host-suffix: ${HOOKGUARD_FORWARDED_HOST_SUFFIX:}
     github-client-id: ${GITHUB_CLIENT_ID:}
